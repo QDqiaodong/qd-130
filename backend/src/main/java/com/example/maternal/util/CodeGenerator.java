@@ -1,0 +1,30 @@
+
+package com.example.maternal.util;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class CodeGenerator {
+    
+    private static final AtomicInteger COUNTER = new AtomicInteger(0);
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    
+    public static String generateTransferNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("TF%s%04d", timestamp, sequence);
+    }
+    
+    public static String generateEquipmentNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("EQ%s%04d", timestamp, sequence);
+    }
+    
+    public static String generateAreaCode() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 1000;
+        return String.format("AREA%s%03d", timestamp.substring(2), sequence);
+    }
+}

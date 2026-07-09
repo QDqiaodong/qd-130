@@ -1,0 +1,87 @@
+services:
+  mysql:
+    image: ${DOCKER_REGISTRY}mysql:8.0
+    container_name: maternal-mysql
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3530}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: maternal_db
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: password
+    volumes:
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./sql/my.cnf:/etc/mysql/conf.d/my.cnf
+      - mysql_data:/var/lib/mysql
+    networks:
+      - maternal-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: ${DOCKER_REGISTRY}redis:7-alpine
+    container_name: maternal-redis
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6630}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - maternal-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+      args:
+        - DOCKER_REGISTRY=${DOCKER_REGISTRY}
+    container_name: maternal-backend
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8330}:${BACKEND_PORT:-8330}"
+    environment:
+      - SERVER_PORT=${BACKEND_PORT:-8330}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=maternal_db
+      - DB_USER=admin
+      - DB_PASSWORD=password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - maternal-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - DOCKER_REGISTRY=${DOCKER_REGISTRY}
+    container_name: maternal-frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8230}:80"
+    depends_on:
+      - backend
+    networks:
+      - maternal-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  maternal-network:
+    driver: bridge
