@@ -6,6 +6,9 @@ import EquipmentList from './components/EquipmentList.vue'
 import EquipmentForm from './components/EquipmentForm.vue'
 import TransferForm from './components/TransferForm.vue'
 import TransferList from './components/TransferList.vue'
+import InspectionPlanList from './components/InspectionPlanList.vue'
+import InspectionList from './components/InspectionList.vue'
+import RepairList from './components/RepairList.vue'
 import { equipmentApi } from './api'
 
 const activeTab = ref('equipment')
@@ -72,6 +75,9 @@ onMounted(() => {
       <div class="header-nav">
         <button :class="['nav-btn', { active: activeTab === 'equipment' }]" @click="activeTab = 'equipment'; loadEquipments()">设备管理</button>
         <button :class="['nav-btn', { active: activeTab === 'transfer' }]" @click="activeTab = 'transfer'">调配台账</button>
+        <button :class="['nav-btn', { active: activeTab === 'plan' }]" @click="activeTab = 'plan'">巡检计划</button>
+        <button :class="['nav-btn', { active: activeTab === 'inspection' }]" @click="activeTab = 'inspection'">巡检记录</button>
+        <button :class="['nav-btn', { active: activeTab === 'repair' }]" @click="activeTab = 'repair'">故障报修</button>
       </div>
     </header>
     
@@ -88,8 +94,20 @@ onMounted(() => {
         </div>
       </div>
       
-      <div v-else class="transfer-page">
+      <div v-else-if="activeTab === 'transfer'" class="transfer-page">
         <TransferList />
+      </div>
+
+      <div v-else-if="activeTab === 'plan'" class="sub-page">
+        <InspectionPlanList />
+      </div>
+
+      <div v-else-if="activeTab === 'inspection'" class="sub-page">
+        <InspectionList />
+      </div>
+
+      <div v-else class="sub-page">
+        <RepairList />
       </div>
     </main>
     
@@ -207,6 +225,10 @@ body {
 }
 
 .transfer-page {
+  width: 100%;
+}
+
+.sub-page {
   width: 100%;
 }
 

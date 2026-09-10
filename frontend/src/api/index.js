@@ -30,14 +30,35 @@ export const equipmentApi = {
 
 export const transferApi = {
   getAllTransfers: () => api.get('/transfers'),
-  getTransfersByDateRange: (startDate, endDate) => 
+  getTransfersByDateRange: (startDate, endDate) =>
     api.get(`/transfers/filter?startDate=${startDate}&endDate=${endDate}`),
   getTransferById: (id) => api.get(`/transfers/${id}`),
   getTransferByNo: (no) => api.get(`/transfers/byNo/${no}`),
-  getTransferSummary: (startDate, endDate) => 
+  getTransferSummary: (startDate, endDate) =>
     api.get(`/transfers/summary?startDate=${startDate}&endDate=${endDate}`),
   createTransfer: (data) => api.post('/transfers', data),
   cancelTransfer: (id) => api.put(`/transfers/${id}/cancel`)
+}
+
+export const inspectionPlanApi = {
+  getAllPlans: () => api.get('/inspection-plans'),
+  getPlanById: (id) => api.get(`/inspection-plans/${id}`),
+  createPlan: (data) => api.post('/inspection-plans', data),
+  updatePlan: (id, data) => api.put(`/inspection-plans/${id}`, data),
+  updatePlanStatus: (id, status) => api.put(`/inspection-plans/${id}/status`, { status })
+}
+
+export const inspectionApi = {
+  getInspections: (params) => api.get('/inspections', { params }),
+  getInspectionDetail: (id) => api.get(`/inspections/${id}`),
+  createInspection: (data) => api.post('/inspections', data)
+}
+
+export const repairApi = {
+  getRepairs: (params) => api.get('/repairs', { params }),
+  getRepairById: (id) => api.get(`/repairs/${id}`),
+  createRepair: (data) => api.post('/repairs', data),
+  updateRepairStatus: (id, data) => api.put(`/repairs/${id}/status`, data)
 }
 
 export default api

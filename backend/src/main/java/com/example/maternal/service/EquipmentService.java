@@ -5,6 +5,7 @@ import com.example.maternal.entity.Area;
 import com.example.maternal.entity.Equipment;
 import com.example.maternal.repository.AreaRepository;
 import com.example.maternal.repository.EquipmentRepository;
+import com.example.maternal.repository.RepairOrderRepository;
 import com.example.maternal.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -17,9 +18,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class EquipmentService {
-    
+
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
+    private final RepairOrderRepository repairOrderRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     
     private static final String EQUIPMENT_TYPE_CACHE_KEY = "equipment:types";
@@ -95,6 +97,9 @@ public class EquipmentService {
     }
     
     public EquipmentDTO bindArea(Long equipmentId, Long areaId) {
+        if (repairOrderRepository.existsByEquipmentIdAndStatusIn(equipmentId, List.of(0, 1))) {
+            throw new RuntimeException("设备维修中，不可调配，待维修恢复后方可重新调配");
+        }
         return equipmentRepository.findById(equipmentId)
                 .map(equipment -> {
                     equipment.setCurrentAreaId(areaId);
@@ -126,7 +131,11 @@ public class EquipmentService {
                 .ifPresent(area -> dto.setCurrentAreaName(area.getName()));
         areaRepository.findById(equipment.getInitialAreaId())
                 .ifPresent(area -> dto.setInitialAreaName(area.getName()));
-        
+
+        repairOrderRepository
+                .findFirstByEquipmentIdAndStatusInOrderByCreatedAtDescIdDesc(equipment.getId(), List.of(0, 1))
+                .ifPresent(order -> dto.setRepairStatus(order.getStatus()));
+
         return dto;
     }
     

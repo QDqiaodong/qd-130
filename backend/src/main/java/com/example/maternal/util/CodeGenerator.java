@@ -27,4 +27,22 @@ public class CodeGenerator {
         int sequence = COUNTER.incrementAndGet() % 1000;
         return String.format("AREA%s%03d", timestamp.substring(2), sequence);
     }
+
+    public static String generatePlanNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("PL%s%04d", timestamp, sequence);
+    }
+
+    public static String generateInspectionNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("IN%s%04d", timestamp, sequence);
+    }
+
+    public static String generateRepairNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("RP%s%04d", timestamp, sequence);
+    }
 }

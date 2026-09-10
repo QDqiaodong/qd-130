@@ -29,6 +29,8 @@ public class EquipmentDTO {
     private String remark;
     
     private String currentAreaName;
-    
+
     private String initialAreaName;
+
+    private Integer repairStatus;
 }

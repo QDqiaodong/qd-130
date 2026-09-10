@@ -15,9 +15,14 @@
             <span>当前区域:</span>
             <span>{{ equipment.currentAreaName || '-' }}</span>
           </div>
+          <div class="repair-badge" v-if="equipment.repairStatus !== null && equipment.repairStatus !== undefined">
+            {{ equipment.repairStatus === 0 ? '待维修' : '维修中' }} · 不可调配
+          </div>
           <div class="equipment-buttons">
             <button @click="$emit('edit', equipment)">编辑</button>
-            <button @click="$emit('transfer', equipment)">调配</button>
+            <button :disabled="equipment.repairStatus !== null && equipment.repairStatus !== undefined"
+                    :title="equipment.repairStatus !== null && equipment.repairStatus !== undefined ? '设备维修中，恢复后才可调配' : ''"
+                    @click="$emit('transfer', equipment)">调配</button>
           </div>
         </div>
       </div>
@@ -147,8 +152,23 @@ defineEmits(['edit', 'transfer'])
   color: #fff;
 }
 
-.equipment-buttons button:last-child:hover {
+.equipment-buttons button:last-child:hover:not(:disabled) {
   background: #66b1ff;
+}
+
+.equipment-buttons button:last-child:disabled {
+  background: #c0c4cc;
+  cursor: not-allowed;
+}
+
+.repair-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  background: #fdf6ec;
+  color: #e6a23c;
+  font-size: 12px;
 }
 
 .empty {

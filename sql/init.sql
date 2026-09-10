@@ -4,6 +4,9 @@ CREATE DATABASE IF NOT EXISTS maternal_db CHARACTER SET utf8mb4 COLLATE utf8mb4_
 
 USE maternal_db;
 
+DROP TABLE IF EXISTS repair_order;
+DROP TABLE IF EXISTS inspection_record;
+DROP TABLE IF EXISTS inspection_plan;
 DROP TABLE IF EXISTS transfer_record;
 DROP TABLE IF EXISTS equipment;
 DROP TABLE IF EXISTS area;
@@ -64,6 +67,70 @@ CREATE TABLE transfer_record (
     INDEX idx_from_to_area (from_area_id, to_area_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='跨区域调配记录表';
 
+CREATE TABLE inspection_plan (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '计划ID',
+    plan_no VARCHAR(50) UNIQUE NOT NULL COMMENT '计划编号',
+    plan_name VARCHAR(100) NOT NULL COMMENT '计划名称',
+    equipment_id BIGINT DEFAULT NULL COMMENT '关联设备ID（按设备巡检）',
+    area_id BIGINT DEFAULT NULL COMMENT '关联区域ID（按区域巡检）',
+    cycle_type INT NOT NULL COMMENT '巡检周期：1-每日，2-每周，3-每月',
+    next_inspection_date DATE COMMENT '下次巡检日期',
+    inspector VARCHAR(50) COMMENT '默认巡检员',
+    status TINYINT DEFAULT 1 COMMENT '状态：0-停用，1-启用',
+    remark VARCHAR(500) COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_plan_no (plan_no),
+    INDEX idx_equipment_id (equipment_id),
+    INDEX idx_area_id (area_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备巡检计划表';
+
+CREATE TABLE inspection_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '巡检记录ID',
+    inspection_no VARCHAR(50) UNIQUE NOT NULL COMMENT '巡检单号',
+    plan_id BIGINT DEFAULT NULL COMMENT '关联巡检计划ID',
+    equipment_id BIGINT NOT NULL COMMENT '设备ID',
+    area_id BIGINT NOT NULL COMMENT '巡检时所在区域ID',
+    inspection_date DATE NOT NULL COMMENT '巡检日期',
+    result TINYINT NOT NULL COMMENT '巡检结果：1-正常，2-异常',
+    abnormal_desc VARCHAR(500) COMMENT '异常描述',
+    photo_url VARCHAR(500) COMMENT '异常照片地址',
+    inspector VARCHAR(50) COMMENT '巡检员',
+    remark VARCHAR(500) COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_inspection_equipment_date (equipment_id, inspection_date),
+    INDEX idx_inspection_no (inspection_no),
+    INDEX idx_plan_id (plan_id),
+    INDEX idx_area_id (area_id),
+    INDEX idx_inspection_date (inspection_date),
+    INDEX idx_result (result)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备巡检记录表';
+
+CREATE TABLE repair_order (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '报修单ID',
+    repair_no VARCHAR(50) UNIQUE NOT NULL COMMENT '报修单号',
+    inspection_id BIGINT NOT NULL COMMENT '来源巡检记录ID',
+    equipment_id BIGINT NOT NULL COMMENT '设备ID',
+    area_id BIGINT NOT NULL COMMENT '报修时所在区域ID',
+    fault_desc VARCHAR(500) COMMENT '故障描述',
+    photo_url VARCHAR(500) COMMENT '故障照片地址',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0-待处理，1-维修中，2-已恢复',
+    reporter VARCHAR(50) COMMENT '报修人',
+    repairman VARCHAR(50) COMMENT '维修人',
+    start_time DATETIME COMMENT '开始维修时间',
+    finish_time DATETIME COMMENT '恢复完成时间',
+    repair_note VARCHAR(500) COMMENT '维修说明',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_repair_inspection (inspection_id),
+    INDEX idx_repair_no (repair_no),
+    INDEX idx_equipment_id (equipment_id),
+    INDEX idx_area_id (area_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备故障报修单表';
+
 INSERT INTO area (name, code, parent_id, level, path, sort_order) VALUES
 ('商超A区', 'AREA-A', NULL, 1, '/AREA-A', 1),
 ('商超B区', 'AREA-B', NULL, 1, '/AREA-B', 2),
@@ -83,3 +150,16 @@ INSERT INTO equipment (equipment_no, equipment_name, equipment_type, model, bran
 ('EQ-006', '婴儿护理台', '护理台', 'HLT-2024', '康贝', 6, 6),
 ('EQ-007', '温奶器', '温奶器', 'WM-2024', '贝亲', 7, 7),
 ('EQ-008', '婴儿护理台', '护理台', 'HLT-2024', '康贝', 7, 7);
+
+INSERT INTO inspection_plan (plan_no, plan_name, equipment_id, area_id, cycle_type, next_inspection_date, inspector, status, remark) VALUES
+('PL202609010001', '温奶器每周巡检', 1, NULL, 2, '2026-09-15', '张工', 1, '重点检查加热与温控功能'),
+('PL202609010002', 'A1母婴室每日巡检', NULL, 4, 1, '2026-09-11', '李工', 1, '每日开店前完成巡检');
+
+INSERT INTO inspection_record (inspection_no, plan_id, equipment_id, area_id, inspection_date, result, abnormal_desc, photo_url, inspector, remark) VALUES
+('IN202609070001', 2, 2, 4, '2026-09-07', 2, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', '李工', '已现场围挡停用'),
+('IN202609080001', 1, 1, 4, '2026-09-08', 2, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', '张工', '已断电停用待修'),
+('IN202609090001', 2, 2, 4, '2026-09-09', 1, NULL, NULL, '李工', '维修后复检正常');
+
+INSERT INTO repair_order (repair_no, inspection_id, equipment_id, area_id, fault_desc, photo_url, status, reporter, repairman, start_time, finish_time, repair_note) VALUES
+('RP202609070001', 1, 2, 4, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', 2, '李工', '王师傅', '2026-09-07 14:00:00', '2026-09-08 17:30:00', '更换原厂卡扣，拉力测试合格，设备恢复使用'),
+('RP202609080001', 2, 1, 4, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', 0, '张工', NULL, NULL, NULL, NULL);

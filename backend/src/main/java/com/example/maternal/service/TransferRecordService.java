@@ -9,6 +9,7 @@ import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.TransferRecord;
 import com.example.maternal.repository.AreaRepository;
 import com.example.maternal.repository.EquipmentRepository;
+import com.example.maternal.repository.RepairOrderRepository;
 import com.example.maternal.repository.TransferRecordRepository;
 import com.example.maternal.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
@@ -23,16 +24,21 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class TransferRecordService {
-    
+
     private final TransferRecordRepository transferRecordRepository;
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
-    
+    private final RepairOrderRepository repairOrderRepository;
+
     @Transactional
     public TransferRecordDTO createTransfer(TransferRequest request) {
         Equipment equipment = equipmentRepository.findById(request.getEquipmentId())
                 .orElseThrow(() -> new RuntimeException("设备不存在"));
-        
+
+        if (repairOrderRepository.existsByEquipmentIdAndStatusIn(request.getEquipmentId(), List.of(0, 1))) {
+            throw new RuntimeException("设备维修中，不可调配，待维修恢复后方可重新调配");
+        }
+
         Area toArea = areaRepository.findById(request.getToAreaId())
                 .orElseThrow(() -> new RuntimeException("目标区域不存在"));
         
