@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TransferRecordRepository extends JpaRepository<TransferRecord, Long> {
@@ -23,12 +24,14 @@ public interface TransferRecordRepository extends JpaRepository<TransferRecord, 
     
     List<TransferRecord> findByToAreaId(Long toAreaId);
     
-    @Query("SELECT t FROM TransferRecord t WHERE t.transferDate >= :startDate AND t.transferDate <= :endDate ORDER BY t.transferDate DESC")
+    @Query("SELECT t FROM TransferRecord t WHERE t.transferDate >= :startDate AND t.transferDate <= :endDate AND t.status = 1 ORDER BY t.transferDate DESC")
     List<TransferRecord> findByDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
-    
-    @Query("SELECT COUNT(t) FROM TransferRecord t WHERE t.transferDate >= :startDate AND t.transferDate <= :endDate")
+
+    @Query("SELECT COUNT(t) FROM TransferRecord t WHERE t.transferDate >= :startDate AND t.transferDate <= :endDate AND t.status = 1")
     Long countByDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
-    
-    @Query("SELECT t FROM TransferRecord t WHERE t.status = 1 ORDER BY t.createdAt DESC")
-    List<TransferRecord> findAllActive();
+
+    @Query("SELECT t FROM TransferRecord t ORDER BY t.createdAt DESC, t.id DESC")
+    List<TransferRecord> findAllOrdered();
+
+    Optional<TransferRecord> findFirstByEquipmentIdAndStatusOrderByCreatedAtDescIdDesc(Long equipmentId, Integer status);
 }

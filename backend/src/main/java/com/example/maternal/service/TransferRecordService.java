@@ -56,7 +56,7 @@ public class TransferRecordService {
     }
     
     public List<TransferRecordDTO> getAllTransfers() {
-        return transferRecordRepository.findAllActive().stream()
+        return transferRecordRepository.findAllOrdered().stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -91,11 +91,26 @@ public class TransferRecordService {
     
     @Transactional
     public void cancelTransfer(Long id) {
-        transferRecordRepository.findById(id)
-                .ifPresent(record -> {
-                    record.setStatus(0);
-                    transferRecordRepository.save(record);
-                });
+        TransferRecord record = transferRecordRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("调配记录不存在"));
+
+        if (record.getStatus() == null || record.getStatus() != 1) {
+            throw new RuntimeException("该调配记录已取消，请勿重复取消");
+        }
+
+        record.setStatus(0);
+        transferRecordRepository.save(record);
+
+        // 按该设备剩余有效调配记录恢复当前位置：取最近一条有效调配的目标区域，无有效记录则恢复初始区域
+        Equipment equipment = equipmentRepository.findById(record.getEquipmentId())
+                .orElseThrow(() -> new RuntimeException("设备不存在"));
+
+        Long restoredAreaId = transferRecordRepository
+                .findFirstByEquipmentIdAndStatusOrderByCreatedAtDescIdDesc(record.getEquipmentId(), 1)
+                .map(TransferRecord::getToAreaId)
+                .orElse(equipment.getInitialAreaId());
+        equipment.setCurrentAreaId(restoredAreaId);
+        equipmentRepository.save(equipment);
     }
     
     private TransferRecordDTO convertToDTO(TransferRecord record) {

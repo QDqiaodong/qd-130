@@ -122,15 +122,26 @@ const handlePrint = (record) => {
   printVisible.value = true
 }
 
+const refreshList = () => {
+  if (startDate.value && endDate.value) {
+    handleFilter()
+  } else {
+    loadTransfers()
+  }
+}
+
 const handleCancel = async (record) => {
   if (!confirm('确定要取消这条调配记录吗？')) return
-  
+
   try {
     const res = await transferApi.cancelTransfer(record.id)
     if (res.data.code === 200) {
-      loadTransfers()
+      refreshList()
+    } else {
+      alert(res.data.message || '取消调配记录失败')
     }
   } catch (error) {
+    alert(error.response?.data?.message || '取消调配记录失败')
     console.error('取消调配记录失败:', error)
   }
 }
