@@ -6,6 +6,7 @@ import com.example.maternal.dto.InspectionRecordDTO;
 import com.example.maternal.dto.InspectionRecordRequest;
 import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.TimelineItem;
+import com.example.maternal.entity.Area;
 import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.InspectionPlan;
 import com.example.maternal.entity.InspectionRecord;
@@ -64,8 +65,21 @@ public class InspectionRecordService {
         if (request.getPlanId() != null) {
             plan = inspectionPlanRepository.findById(request.getPlanId())
                     .orElseThrow(() -> new RuntimeException("巡检计划不存在"));
-            if (plan.getEquipmentId() != null && !plan.getEquipmentId().equals(request.getEquipmentId())) {
-                throw new RuntimeException("所选计划关联的设备与巡检设备不一致");
+            if (plan.getEquipmentId() != null) {
+                // 按设备计划仍须保持设备匹配校验
+                if (!plan.getEquipmentId().equals(request.getEquipmentId())) {
+                    throw new RuntimeException("所选计划关联的设备与巡检设备不一致");
+                }
+            } else if (plan.getAreaId() != null) {
+                // 按区域计划：设备调配出原区域后，原区域计划不得继续登记该设备
+                if (!plan.getAreaId().equals(equipment.getCurrentAreaId())) {
+                    String planAreaName = areaRepository.findById(plan.getAreaId())
+                            .map(Area::getName).orElse("ID为" + plan.getAreaId() + "的区域");
+                    String currentAreaName = areaRepository.findById(equipment.getCurrentAreaId())
+                            .map(Area::getName).orElse("其他区域");
+                    throw new RuntimeException("设备当前不在计划所属区域「" + planAreaName
+                            + "」（当前区域：" + currentAreaName + "），不能使用该区域巡检计划登记，请选择设备当前区域的计划或不关联计划登记");
+                }
             }
         }
 
