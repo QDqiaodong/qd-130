@@ -25,8 +25,11 @@ public class RepairOrderController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long areaId,
-            @RequestParam(required = false) Integer status) {
-        return ApiResponse.success(repairOrderService.getRepairs(startDate, endDate, areaId, status));
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String equipmentType,
+            @RequestParam(required = false) Long equipmentCurrentAreaId) {
+        return ApiResponse.success(repairOrderService
+                .getRepairs(startDate, endDate, areaId, status, equipmentType, equipmentCurrentAreaId));
     }
 
     @GetMapping("/{id}")

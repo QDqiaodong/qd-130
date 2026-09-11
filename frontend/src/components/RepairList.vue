@@ -6,13 +6,22 @@
     </div>
 
     <div class="filter-section">
+      <div v-if="drillTip" class="drill-banner">
+        <span>{{ drillTip }}</span>
+        <button class="btn-back" @click="backToDashboard">返回看板</button>
+        <button class="btn-clear-drill" @click="clearDrillFilters">清除看板筛选</button>
+      </div>
       <div class="filter-row">
         <input type="date" v-model="filters.startDate" placeholder="开始日期" />
         <span class="separator">至</span>
         <input type="date" v-model="filters.endDate" placeholder="结束日期" />
-        <select v-model="filters.areaId">
+        <select v-model="filters.areaId" @change="handleAreaSelectChange">
           <option value="">全部区域</option>
           <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
+        </select>
+        <select v-model="filters.equipmentType">
+          <option value="">全部设备类型</option>
+          <option v-for="type in typeOptions" :key="type" :value="type">{{ type }}</option>
         </select>
         <select v-model="filters.status">
           <option value="">全部状态</option>
@@ -155,11 +164,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { repairApi, areaApi } from '../api'
+import { ref, computed, onMounted } from 'vue'
+import { repairApi, areaApi, equipmentApi } from '../api'
+
+const props = defineProps({
+  initialFilters: {
+    type: Object,
+    default: () => ({})
+  }
+})
+const emit = defineEmits(['back-dashboard'])
 
 const repairList = ref([])
 const areaOptions = ref([])
+const typeOptions = ref([])
 const transitionVisible = ref(false)
 const transitionTarget = ref(1)
 const currentOrder = ref(null)
@@ -173,24 +191,53 @@ const defaultFilters = () => ({
   startDate: '',
   endDate: '',
   areaId: '',
-  status: ''
+  equipmentType: '',
+  status: '',
+  equipmentCurrentAreaId: null
 })
 
 const filters = ref(defaultFilters())
+
+const drillTip = computed(() => {
+  if (!props.initialFilters || Object.keys(props.initialFilters).length === 0) return ''
+  const parts = []
+  if (filters.value.equipmentCurrentAreaId) {
+    const area = areaOptions.value.find(a => a.id === filters.value.equipmentCurrentAreaId)
+    if (area) parts.push(`设备当前所在区域「${area.name}」（含下级区域）`)
+  } else if (filters.value.areaId !== '') {
+    const area = areaOptions.value.find(a => a.id === filters.value.areaId)
+    if (area) parts.push(`区域「${area.name}」（按报修单记录区域）`)
+  }
+  if (filters.value.equipmentType) parts.push(`类型「${filters.value.equipmentType}」`)
+  if (filters.value.status === 0) parts.push('状态：待处理（当前状态，不含周期条件）')
+  if (filters.value.status === 1) parts.push('状态：维修中（当前状态，不含周期条件）')
+  if (filters.value.startDate && filters.value.endDate) {
+    parts.push(`报修时间 ${filters.value.startDate} 至 ${filters.value.endDate}`)
+  }
+  return parts.length > 0 ? `来自健康看板的筛选：${parts.join('，')}` : ''
+})
 
 const loadRepairs = async () => {
   try {
     const params = {}
     if (filters.value.startDate) params.startDate = filters.value.startDate
     if (filters.value.endDate) params.endDate = filters.value.endDate
-    if (filters.value.areaId !== '') params.areaId = filters.value.areaId
+    if (filters.value.equipmentCurrentAreaId) {
+      params.equipmentCurrentAreaId = filters.value.equipmentCurrentAreaId
+    } else if (filters.value.areaId !== '') {
+      params.areaId = filters.value.areaId
+    }
+    if (filters.value.equipmentType !== '') params.equipmentType = filters.value.equipmentType
     if (filters.value.status !== '') params.status = filters.value.status
 
     const res = await repairApi.getRepairs(params)
     if (res.data.code === 200) {
       repairList.value = res.data.data
+    } else {
+      alert(res.data.message || '加载报修单失败')
     }
   } catch (error) {
+    alert(error.response?.data?.message || '加载报修单失败，请稍后重试')
     console.error('加载报修单失败:', error)
   }
 }
@@ -206,9 +253,44 @@ const loadAreas = async () => {
   }
 }
 
+const loadTypes = async () => {
+  try {
+    const res = await equipmentApi.getEquipmentTypes()
+    if (res.data.code === 200) {
+      typeOptions.value = res.data.data
+    }
+  } catch (error) {
+    console.error('加载设备类型失败:', error)
+  }
+}
+
+const applyInitialFilters = () => {
+  const init = props.initialFilters || {}
+  filters.value = {
+    ...defaultFilters(),
+    ...init,
+    // 看板当前状态下钻锁定设备当前区域口径，下拉区域不再生效，避免明细数与卡片不一致
+    areaId: init.equipmentCurrentAreaId ? '' : (init.areaId ?? '')
+  }
+}
+
 const handleReset = () => {
   filters.value = defaultFilters()
   loadRepairs()
+}
+
+const clearDrillFilters = () => {
+  filters.value = defaultFilters()
+  loadRepairs()
+}
+
+const handleAreaSelectChange = () => {
+  // 用户手动改区域下拉后，解除看板锁定的「设备当前区域」口径
+  filters.value.equipmentCurrentAreaId = null
+}
+
+const backToDashboard = () => {
+  emit('back-dashboard')
 }
 
 const openTransition = (order, target) => {
@@ -274,8 +356,10 @@ const formatTime = (time) => {
 }
 
 onMounted(() => {
-  loadRepairs()
+  applyInitialFilters()
   loadAreas()
+  loadTypes()
+  loadRepairs()
 })
 </script>
 
@@ -308,6 +392,40 @@ onMounted(() => {
   padding: 12px;
   background: #f8f9fa;
   border-radius: 4px;
+}
+
+.drill-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 4px;
+  color: #e6a23c;
+  font-size: 13px;
+}
+
+.btn-back {
+  padding: 3px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-clear-drill {
+  padding: 3px 12px;
+  border: 1px solid #e6a23c;
+  border-radius: 4px;
+  background: #fff;
+  color: #e6a23c;
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .filter-row {

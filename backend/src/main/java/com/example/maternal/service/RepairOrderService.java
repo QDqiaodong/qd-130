@@ -4,6 +4,7 @@ package com.example.maternal.service;
 import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.RepairStatusRequest;
 import com.example.maternal.dto.TimelineItem;
+import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.InspectionRecord;
 import com.example.maternal.entity.RepairOrder;
 import com.example.maternal.repository.AreaRepository;
@@ -29,6 +30,7 @@ public class RepairOrderService {
     private final InspectionRecordRepository inspectionRecordRepository;
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
+    private final AreaService areaService;
 
     public static final int STATUS_PENDING = 0;
     public static final int STATUS_REPAIRING = 1;
@@ -65,9 +67,35 @@ public class RepairOrderService {
     }
 
     public List<RepairOrderDTO> getRepairs(LocalDate startDate, LocalDate endDate, Long areaId, Integer status) {
+        return getRepairs(startDate, endDate, areaId, status, null);
+    }
+
+    public List<RepairOrderDTO> getRepairs(LocalDate startDate, LocalDate endDate, Long areaId,
+                                           Integer status, String equipmentType) {
+        return getRepairs(startDate, endDate, areaId, status, equipmentType, null);
+    }
+
+    /**
+     * @param equipmentCurrentAreaId 看板下钻使用：按设备「当前所在区域」匹配报修单，
+     *                               与看板当前维修数/待处理数口径一致；为 null 时回退到报修单记录区域
+     */
+    public List<RepairOrderDTO> getRepairs(LocalDate startDate, LocalDate endDate, Long areaId,
+                                           Integer status, String equipmentType,
+                                           Long equipmentCurrentAreaId) {
         LocalDateTime startTime = startDate != null ? startDate.atStartOfDay() : null;
         LocalDateTime endTime = endDate != null ? endDate.plusDays(1).atStartOfDay() : null;
-        return repairOrderRepository.findByFilter(startTime, endTime, areaId, status).stream()
+        java.util.Set<Long> recordScopeAreaIds = areaService.resolveScopeAreaIds(areaId);
+        java.util.Set<Long> currentScopeAreaIds = areaService.resolveScopeAreaIds(equipmentCurrentAreaId);
+        return repairOrderRepository.findForDashboard(startTime, endTime, null, equipmentType).stream()
+                .filter(order -> status == null || status.equals(order.getStatus()))
+                .filter(order -> {
+                    if (currentScopeAreaIds != null) {
+                        Equipment equipment = equipmentRepository.findById(order.getEquipmentId()).orElse(null);
+                        Long resolvedAreaId = equipment != null ? equipment.getCurrentAreaId() : order.getAreaId();
+                        return currentScopeAreaIds.contains(resolvedAreaId);
+                    }
+                    return recordScopeAreaIds == null || recordScopeAreaIds.contains(order.getAreaId());
+                })
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }

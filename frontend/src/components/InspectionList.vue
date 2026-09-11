@@ -7,6 +7,11 @@
     </div>
 
     <div class="filter-section">
+      <div v-if="drillTip" class="drill-banner">
+        <span>{{ drillTip }}</span>
+        <button class="btn-back" @click="backToDashboard">返回看板</button>
+        <button class="btn-clear-drill" @click="clearDrillFilters">清除看板筛选</button>
+      </div>
       <div class="filter-row">
         <input type="date" v-model="filters.startDate" placeholder="开始日期" />
         <span class="separator">至</span>
@@ -14,6 +19,10 @@
         <select v-model="filters.areaId">
           <option value="">全部区域</option>
           <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
+        </select>
+        <select v-model="filters.equipmentType">
+          <option value="">全部设备类型</option>
+          <option v-for="type in typeOptions" :key="type" :value="type">{{ type }}</option>
         </select>
         <select v-model="filters.result">
           <option value="">全部结果</option>
@@ -86,13 +95,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { inspectionApi, repairApi, areaApi } from '../api'
+import { ref, computed, onMounted } from 'vue'
+import { inspectionApi, repairApi, areaApi, equipmentApi } from '../api'
 import InspectionForm from './InspectionForm.vue'
 import InspectionDetail from './InspectionDetail.vue'
 
+const props = defineProps({
+  initialFilters: {
+    type: Object,
+    default: () => ({})
+  }
+})
+const emit = defineEmits(['back-dashboard'])
+
 const inspectionList = ref([])
 const areaOptions = ref([])
+const typeOptions = ref([])
 const formVisible = ref(false)
 const detailVisible = ref(false)
 const detailId = ref(null)
@@ -101,11 +119,29 @@ const defaultFilters = () => ({
   startDate: '',
   endDate: '',
   areaId: '',
+  equipmentType: '',
   result: '',
   repairStatus: ''
 })
 
 const filters = ref(defaultFilters())
+
+const drillTip = computed(() => {
+  const parts = []
+  if (filters.value.startDate && filters.value.endDate) {
+    parts.push(`周期 ${filters.value.startDate} 至 ${filters.value.endDate}`)
+  }
+  if (filters.value.areaId !== '') {
+    const area = areaOptions.value.find(a => a.id === filters.value.areaId)
+    if (area) parts.push(`区域「${area.name}」`)
+  }
+  if (filters.value.equipmentType) parts.push(`类型「${filters.value.equipmentType}」`)
+  if (filters.value.result === 2) parts.push('仅异常巡检')
+  if (props.initialFilters && Object.keys(props.initialFilters).length > 0 && parts.length > 0) {
+    return `来自健康看板的筛选：${parts.join('，')}`
+  }
+  return ''
+})
 
 const loadInspections = async () => {
   try {
@@ -113,14 +149,18 @@ const loadInspections = async () => {
     if (filters.value.startDate) params.startDate = filters.value.startDate
     if (filters.value.endDate) params.endDate = filters.value.endDate
     if (filters.value.areaId !== '') params.areaId = filters.value.areaId
+    if (filters.value.equipmentType !== '') params.equipmentType = filters.value.equipmentType
     if (filters.value.result !== '') params.result = filters.value.result
     if (filters.value.repairStatus !== '') params.repairStatus = filters.value.repairStatus
 
     const res = await inspectionApi.getInspections(params)
     if (res.data.code === 200) {
       inspectionList.value = res.data.data
+    } else {
+      alert(res.data.message || '加载巡检记录失败')
     }
   } catch (error) {
+    alert(error.response?.data?.message || '加载巡检记录失败，请稍后重试')
     console.error('加载巡检记录失败:', error)
   }
 }
@@ -136,9 +176,34 @@ const loadAreas = async () => {
   }
 }
 
+const loadTypes = async () => {
+  try {
+    const res = await equipmentApi.getEquipmentTypes()
+    if (res.data.code === 200) {
+      typeOptions.value = res.data.data
+    }
+  } catch (error) {
+    console.error('加载设备类型失败:', error)
+  }
+}
+
+const applyInitialFilters = () => {
+  const init = props.initialFilters || {}
+  filters.value = { ...defaultFilters(), ...init }
+}
+
 const handleReset = () => {
   filters.value = defaultFilters()
   loadInspections()
+}
+
+const clearDrillFilters = () => {
+  filters.value = defaultFilters()
+  loadInspections()
+}
+
+const backToDashboard = () => {
+  emit('back-dashboard')
 }
 
 const handleDetail = (record) => {
@@ -180,8 +245,10 @@ const repairStatusClass = (status) => {
 }
 
 onMounted(() => {
-  loadInspections()
+  applyInitialFilters()
   loadAreas()
+  loadTypes()
+  loadInspections()
 })
 </script>
 
@@ -229,6 +296,40 @@ onMounted(() => {
   padding: 12px;
   background: #f8f9fa;
   border-radius: 4px;
+}
+
+.drill-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 4px;
+  color: #e6a23c;
+  font-size: 13px;
+}
+
+.btn-back {
+  padding: 3px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-clear-drill {
+  padding: 3px 12px;
+  border: 1px solid #e6a23c;
+  border-radius: 4px;
+  background: #fff;
+  color: #e6a23c;
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .filter-row {

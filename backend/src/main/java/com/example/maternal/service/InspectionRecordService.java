@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +36,7 @@ public class InspectionRecordService {
     private final AreaRepository areaRepository;
     private final RepairOrderRepository repairOrderRepository;
     private final RepairOrderService repairOrderService;
+    private final AreaService areaService;
 
     @Transactional
     public InspectionRecordDTO createInspection(InspectionRecordRequest request) {
@@ -116,7 +118,33 @@ public class InspectionRecordService {
 
     public List<InspectionRecordDTO> getInspections(LocalDate startDate, LocalDate endDate, Long areaId,
                                                     Integer result, Integer repairStatus) {
-        return inspectionRecordRepository.findByFilter(startDate, endDate, areaId, result, repairStatus).stream()
+        return getInspections(startDate, endDate, areaId, result, repairStatus, null);
+    }
+
+    public List<InspectionRecordDTO> getInspections(LocalDate startDate, LocalDate endDate, Long areaId,
+                                                    Integer result, Integer repairStatus, String equipmentType) {
+        Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
+        List<InspectionRecord> records;
+        if (repairStatus == null && equipmentType != null) {
+            records = inspectionRecordRepository.findForDashboard(startDate, endDate, null, result, equipmentType);
+        } else {
+            records = inspectionRecordRepository.findByFilter(startDate, endDate, null, result, repairStatus);
+            if (equipmentType != null) {
+                Set<Long> typeEquipmentIds = equipmentRepository.findAll().stream()
+                        .filter(e -> equipmentType.equals(e.getEquipmentType()))
+                        .map(Equipment::getId)
+                        .collect(Collectors.toSet());
+                records = records.stream()
+                        .filter(r -> typeEquipmentIds.contains(r.getEquipmentId()))
+                        .collect(Collectors.toList());
+            }
+        }
+        if (scopeAreaIds != null) {
+            records = records.stream()
+                    .filter(r -> scopeAreaIds.contains(r.getAreaId()))
+                    .collect(Collectors.toList());
+        }
+        return records.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }

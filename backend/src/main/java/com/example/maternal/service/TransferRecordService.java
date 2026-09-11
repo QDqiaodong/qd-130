@@ -29,6 +29,7 @@ public class TransferRecordService {
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
     private final RepairOrderRepository repairOrderRepository;
+    private final AreaService areaService;
 
     @Transactional
     public TransferRecordDTO createTransfer(TransferRequest request) {
@@ -68,7 +69,16 @@ public class TransferRecordService {
     }
     
     public List<TransferRecordDTO> getTransfersByDateRange(LocalDate startDate, LocalDate endDate) {
-        return transferRecordRepository.findByDateRange(startDate, endDate).stream()
+        return getTransfersByDateRange(startDate, endDate, null, null);
+    }
+
+    public List<TransferRecordDTO> getTransfersByDateRange(LocalDate startDate, LocalDate endDate,
+                                                           Long areaId, String equipmentType) {
+        java.util.Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
+        return transferRecordRepository.findForDashboard(startDate, endDate, null, equipmentType).stream()
+                .filter(t -> scopeAreaIds == null
+                        || scopeAreaIds.contains(t.getFromAreaId())
+                        || scopeAreaIds.contains(t.getToAreaId()))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }

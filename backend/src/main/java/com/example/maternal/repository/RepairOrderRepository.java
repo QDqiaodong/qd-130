@@ -35,4 +35,15 @@ public interface RepairOrderRepository extends JpaRepository<RepairOrder, Long> 
                                    @Param("endTime") LocalDateTime endTime,
                                    @Param("areaId") Long areaId,
                                    @Param("status") Integer status);
+
+    @Query("SELECT ro FROM RepairOrder ro WHERE " +
+            "(:startTime IS NULL OR ro.createdAt >= :startTime) AND " +
+            "(:endTime IS NULL OR ro.createdAt < :endTime) AND " +
+            "(:areaId IS NULL OR ro.areaId = :areaId) AND " +
+            "(:equipmentType IS NULL OR EXISTS (SELECT 1 FROM Equipment e WHERE e.id = ro.equipmentId AND e.equipmentType = :equipmentType)) " +
+            "ORDER BY ro.createdAt DESC, ro.id DESC")
+    List<RepairOrder> findForDashboard(@Param("startTime") LocalDateTime startTime,
+                                       @Param("endTime") LocalDateTime endTime,
+                                       @Param("areaId") Long areaId,
+                                       @Param("equipmentType") String equipmentType);
 }

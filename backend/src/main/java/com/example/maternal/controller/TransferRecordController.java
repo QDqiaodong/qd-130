@@ -28,8 +28,11 @@ public class TransferRecordController {
     @GetMapping("/filter")
     public ApiResponse<List<TransferRecordDTO>> getTransfersByDateRange(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return ApiResponse.success(transferRecordService.getTransfersByDateRange(startDate, endDate));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long areaId,
+            @RequestParam(required = false) String equipmentType) {
+        return ApiResponse.success(transferRecordService
+                .getTransfersByDateRange(startDate, endDate, areaId, equipmentType));
     }
     
     @GetMapping("/{id}")

@@ -26,8 +26,10 @@ public class InspectionRecordController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long areaId,
             @RequestParam(required = false) Integer result,
-            @RequestParam(required = false) Integer repairStatus) {
-        return ApiResponse.success(inspectionRecordService.getInspections(startDate, endDate, areaId, result, repairStatus));
+            @RequestParam(required = false) Integer repairStatus,
+            @RequestParam(required = false) String equipmentType) {
+        return ApiResponse.success(inspectionRecordService
+                .getInspections(startDate, endDate, areaId, result, repairStatus, equipmentType));
     }
 
     @GetMapping("/{id}")

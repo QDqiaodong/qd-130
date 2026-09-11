@@ -30,8 +30,8 @@ export const equipmentApi = {
 
 export const transferApi = {
   getAllTransfers: () => api.get('/transfers'),
-  getTransfersByDateRange: (startDate, endDate) =>
-    api.get(`/transfers/filter?startDate=${startDate}&endDate=${endDate}`),
+  getTransfersByDateRange: (startDate, endDate, extraParams = {}) =>
+    api.get('/transfers/filter', { params: { startDate, endDate, ...extraParams } }),
   getTransferById: (id) => api.get(`/transfers/${id}`),
   getTransferByNo: (no) => api.get(`/transfers/byNo/${no}`),
   getTransferSummary: (startDate, endDate) =>
@@ -59,6 +59,10 @@ export const repairApi = {
   getRepairById: (id) => api.get(`/repairs/${id}`),
   createRepair: (data) => api.post('/repairs', data),
   updateRepairStatus: (id, data) => api.put(`/repairs/${id}/status`, data)
+}
+
+export const dashboardApi = {
+  getHealthDashboard: (params) => api.get('/dashboard/health', { params })
 }
 
 export default api

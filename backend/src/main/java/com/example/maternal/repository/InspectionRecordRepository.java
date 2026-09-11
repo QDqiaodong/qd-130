@@ -34,4 +34,17 @@ public interface InspectionRecordRepository extends JpaRepository<InspectionReco
                                         @Param("areaId") Long areaId,
                                         @Param("result") Integer result,
                                         @Param("repairStatus") Integer repairStatus);
+
+    @Query("SELECT r FROM InspectionRecord r WHERE " +
+            "(:startDate IS NULL OR r.inspectionDate >= :startDate) AND " +
+            "(:endDate IS NULL OR r.inspectionDate <= :endDate) AND " +
+            "(:areaId IS NULL OR r.areaId = :areaId) AND " +
+            "(:result IS NULL OR r.result = :result) AND " +
+            "(:equipmentType IS NULL OR EXISTS (SELECT 1 FROM Equipment e WHERE e.id = r.equipmentId AND e.equipmentType = :equipmentType)) " +
+            "ORDER BY r.inspectionDate DESC, r.id DESC")
+    List<InspectionRecord> findForDashboard(@Param("startDate") LocalDate startDate,
+                                            @Param("endDate") LocalDate endDate,
+                                            @Param("areaId") Long areaId,
+                                            @Param("result") Integer result,
+                                            @Param("equipmentType") String equipmentType);
 }

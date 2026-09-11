@@ -10,14 +10,34 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class AreaService {
-    
+
     private final AreaRepository areaRepository;
-    
+
+    /**
+     * 解析区域筛选范围：选中父区域时包含其全部下级区域，选中不存在的区域时返回 null。
+     */
+    public Set<Long> resolveScopeAreaIds(Long areaId) {
+        if (areaId == null) {
+            return null;
+        }
+        Area selected = areaRepository.findById(areaId).orElse(null);
+        if (selected == null) {
+            return null;
+        }
+        String prefix = selected.getPath() == null ? null : selected.getPath() + "/";
+        return areaRepository.findAll().stream()
+                .filter(a -> a.getId().equals(areaId)
+                        || (prefix != null && a.getPath() != null && a.getPath().startsWith(prefix)))
+                .map(Area::getId)
+                .collect(Collectors.toSet());
+    }
+
     public List<AreaDTO> getAllAreas() {
         return areaRepository.findAll().stream()
                 .map(this::convertToDTO)
