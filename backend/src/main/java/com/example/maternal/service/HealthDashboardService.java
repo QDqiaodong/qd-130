@@ -64,15 +64,20 @@ public class HealthDashboardService {
             throw new RuntimeException("结束日期不能晚于今天");
         }
 
+        final LocalDate rangeStart = startDate;
+        final LocalDate rangeEnd = endDate;
         Area selectedArea = null;
-        Set<Long> scopeAreaIds = null;
+        final Set<Long> scopeAreaIds;
         if (areaId != null) {
             selectedArea = areaRepository.findById(areaId)
                     .orElseThrow(() -> new RuntimeException("所选区域不存在"));
+            Area scopedArea = selectedArea;
             scopeAreaIds = areaRepository.findAll().stream()
-                    .filter(a -> isSameOrDescendant(a, selectedArea))
+                    .filter(a -> isSameOrDescendant(a, scopedArea))
                     .map(Area::getId)
                     .collect(Collectors.toSet());
+        } else {
+            scopeAreaIds = null;
         }
 
         List<Equipment> equipmentList = equipmentRepository.findAll().stream()
