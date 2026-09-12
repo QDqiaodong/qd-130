@@ -39,6 +39,17 @@ public class InspectionRecordDTO {
 
     private String remark;
 
+    private String reviewer;
+
+    private LocalDateTime reviewTime;
+
+    private Integer reviewResult;
+
+    private String reviewNote;
+
+    /** 可否转报修：异常且复核属实且尚未创建报修单时为 true，与列表报修入口口径一致 */
+    private Boolean canRepair;
+
     private Long repairOrderId;
 
     private String repairNo;

@@ -119,6 +119,14 @@ public class RepairOrderService {
             throw new RuntimeException("仅巡检结果为异常的记录才能创建报修单");
         }
 
+        // 异常巡检须先由值班复核：属实才允许转报修，不属实或未复核都不能报修
+        if (record.getReviewResult() == null) {
+            throw new RuntimeException("该异常巡检尚未复核，需值班复核属实后才能转报修");
+        }
+        if (record.getReviewResult() != InspectionRecordService.REVIEW_RESULT_CONFIRMED) {
+            throw new RuntimeException("复核结论为不属实，该巡检记录不能转报修");
+        }
+
         if (repairOrderRepository.existsByInspectionId(inspectionId)) {
             throw new RuntimeException("该巡检记录已创建报修单，请勿重复提交");
         }

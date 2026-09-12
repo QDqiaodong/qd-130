@@ -99,6 +99,10 @@ CREATE TABLE inspection_record (
     photo_url VARCHAR(500) COMMENT '异常照片地址',
     inspector VARCHAR(50) COMMENT '巡检员',
     remark VARCHAR(500) COMMENT '备注',
+    reviewer VARCHAR(50) COMMENT '复核人（值班）',
+    review_time DATETIME COMMENT '复核时间',
+    review_result TINYINT COMMENT '复核结论：1-属实，2-不属实',
+    review_note VARCHAR(500) COMMENT '复核说明（不属实必填）',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     UNIQUE KEY uk_inspection_equipment_date (equipment_id, inspection_date),
@@ -106,7 +110,8 @@ CREATE TABLE inspection_record (
     INDEX idx_plan_id (plan_id),
     INDEX idx_area_id (area_id),
     INDEX idx_inspection_date (inspection_date),
-    INDEX idx_result (result)
+    INDEX idx_result (result),
+    INDEX idx_review_result (review_result)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备巡检记录表';
 
 CREATE TABLE spot_check_record (
@@ -182,10 +187,12 @@ INSERT INTO inspection_plan (plan_no, plan_name, equipment_id, area_id, cycle_ty
 ('PL202609010001', '温奶器每周巡检', 1, NULL, 2, '2026-09-15', '张工', 1, '重点检查加热与温控功能'),
 ('PL202609010002', 'A1母婴室每日巡检', NULL, 4, 1, '2026-09-11', '李工', 1, '每日开店前完成巡检');
 
-INSERT INTO inspection_record (inspection_no, plan_id, equipment_id, area_id, inspection_date, result, abnormal_desc, photo_url, inspector, remark) VALUES
-('IN202609070001', 2, 2, 4, '2026-09-07', 2, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', '李工', '已现场围挡停用'),
-('IN202609080001', 1, 1, 4, '2026-09-08', 2, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', '张工', '已断电停用待修'),
-('IN202609090001', 2, 2, 4, '2026-09-09', 1, NULL, NULL, '李工', '维修后复检正常');
+INSERT INTO inspection_record (inspection_no, plan_id, equipment_id, area_id, inspection_date, result, abnormal_desc, photo_url, inspector, remark, reviewer, review_time, review_result, review_note) VALUES
+('IN202609070001', 2, 2, 4, '2026-09-07', 2, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', '李工', '已现场围挡停用', '赵值班', '2026-09-07 10:30:00', 1, '现场核对卡扣确实断裂，情况属实'),
+('IN202609080001', 1, 1, 4, '2026-09-08', 2, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', '张工', '已断电停用待修', '赵值班', '2026-09-08 09:40:00', 1, '通电复核确认无法加热，情况属实'),
+('IN202609090001', 2, 2, 4, '2026-09-09', 1, NULL, NULL, '李工', '维修后复检正常', NULL, NULL, NULL, NULL),
+('IN202609100001', NULL, 6, 6, '2026-09-10', 2, '护理台护栏松动，疑似卡扣未锁紧', NULL, '王工', NULL, '钱值班', '2026-09-10 15:20:00', 2, '值班现场复测护栏已锁紧，为巡检误判，无需报修'),
+('IN202609110001', NULL, 8, 7, '2026-09-11', 2, '护理台软包破损，海绵外露', NULL, '钱工', NULL, NULL, NULL, NULL, NULL);
 
 INSERT INTO repair_order (repair_no, inspection_id, equipment_id, area_id, fault_desc, photo_url, status, reporter, repairman, start_time, finish_time, repair_note) VALUES
 ('RP202609070001', 1, 2, 4, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', 2, '李工', '王师傅', '2026-09-07 14:00:00', '2026-09-08 17:30:00', '更换原厂卡扣，拉力测试合格，设备恢复使用'),

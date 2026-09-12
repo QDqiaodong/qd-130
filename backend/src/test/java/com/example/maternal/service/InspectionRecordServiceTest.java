@@ -3,7 +3,6 @@ package com.example.maternal.service;
 
 import com.example.maternal.dto.InspectionRecordDTO;
 import com.example.maternal.dto.InspectionRecordRequest;
-import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.entity.Area;
 import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.InspectionPlan;
@@ -259,13 +258,12 @@ class InspectionRecordServiceTest {
     }
 
     @Test
-    @DisplayName("异常自动报修流程不受区域校验影响：区域计划下异常巡检仍可自动创建报修单")
-    void createInspection_areaPlan_abnormalWithAutoRepair_stillCreatesRepairOrder() {
+    @DisplayName("异常巡检登记后不再自动创建报修单，需值班复核属实后才能转报修")
+    void createInspection_abnormal_noAutoRepair_untilReviewed() {
         InspectionRecordRequest request = baseRequest();
         request.setPlanId(AREA_PLAN_ID);
         request.setResult(2);
         request.setAbnormalDesc("设备无法加热");
-        request.setCreateRepair(true);
 
         when(inspectionPlanRepository.findById(AREA_PLAN_ID)).thenReturn(Optional.of(areaPlan(AREA_A_ID)));
         when(inspectionRecordRepository.save(any(InspectionRecord.class))).thenAnswer(invocation -> {
@@ -273,17 +271,12 @@ class InspectionRecordServiceTest {
             record.setId(5L);
             return record;
         });
-        RepairOrderDTO repairOrderDTO = new RepairOrderDTO();
-        repairOrderDTO.setId(50L);
-        repairOrderDTO.setRepairNo("RP202609110001");
-        repairOrderDTO.setStatus(RepairOrderService.STATUS_PENDING);
-        when(repairOrderService.createRepairOrder(eq(5L), eq("张三"))).thenReturn(repairOrderDTO);
 
         InspectionRecordDTO dto = inspectionRecordService.createInspection(request);
 
-        assertThat(dto.getRepairOrderId()).isEqualTo(50L);
-        assertThat(dto.getRepairNo()).isEqualTo("RP202609110001");
-        assertThat(dto.getRepairStatus()).isEqualTo(RepairOrderService.STATUS_PENDING);
-        verify(repairOrderService).createRepairOrder(eq(5L), eq("张三"));
+        assertThat(dto.getRepairOrderId()).isNull();
+        assertThat(dto.getRepairNo()).isNull();
+        assertThat(dto.getCanRepair()).isFalse();
+        verify(repairOrderService, never()).createRepairOrder(anyLong(), any());
     }
 }

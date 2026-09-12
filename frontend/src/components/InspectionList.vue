@@ -13,11 +13,13 @@
         <button class="btn-clear-drill" @click="clearDrillFilters">清除看板筛选</button>
       </div>
       <div class="filter-row">
+        <label class="filter-label">巡检日</label>
         <input type="date" v-model="filters.startDate" placeholder="开始日期" />
         <span class="separator">至</span>
         <input type="date" v-model="filters.endDate" placeholder="结束日期" />
+        <label class="filter-label">母婴室</label>
         <select v-model="filters.areaId">
-          <option value="">全部区域</option>
+          <option value="">全部母婴室</option>
           <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
         </select>
         <select v-model="filters.equipmentType">
@@ -29,6 +31,12 @@
           <option :value="1">正常</option>
           <option :value="2">异常</option>
         </select>
+        <select v-model="filters.reviewStatus">
+          <option value="">全部复核状态</option>
+          <option :value="-1">待复核</option>
+          <option :value="1">属实</option>
+          <option :value="2">不属实</option>
+        </select>
         <select v-model="filters.repairStatus">
           <option value="">全部维修状态</option>
           <option :value="-1">未报修</option>
@@ -36,9 +44,17 @@
           <option :value="1">维修中</option>
           <option :value="2">已恢复</option>
         </select>
-        <button class="btn-filter" @click="loadInspections">筛选</button>
+        <button class="btn-filter" @click="applyFilters">筛选</button>
         <button class="btn-reset" @click="handleReset">重置</button>
       </div>
+      <p v-if="filterError" class="filter-error">{{ filterError }}</p>
+    </div>
+
+    <div v-if="loadError" class="load-banner error">
+      <span>{{ loadError }}</span>
+      <button class="btn-retry" :disabled="loading" @click="loadInspections">
+        {{ loading ? '加载中...' : '重试' }}
+      </button>
     </div>
 
     <table class="inspection-table">
@@ -50,6 +66,7 @@
           <th>区域</th>
           <th>巡检日期</th>
           <th>巡检结果</th>
+          <th>复核状态</th>
           <th>异常描述</th>
           <th>维修状态</th>
           <th>巡检员</th>
@@ -68,6 +85,13 @@
               {{ record.result === 1 ? '正常' : '异常' }}
             </span>
           </td>
+          <td>
+            <span v-if="record.result === 2"
+                  :class="['review-tag', reviewStatusClass(record.reviewResult)]">
+              {{ reviewStatusText(record.reviewResult) }}
+            </span>
+            <span v-else class="no-review">无需复核</span>
+          </td>
           <td class="desc-cell" :title="record.abnormalDesc">{{ record.abnormalDesc || '-' }}</td>
           <td>
             <span v-if="record.repairStatus !== null && record.repairStatus !== undefined"
@@ -79,18 +103,23 @@
           <td>{{ record.inspector || '-' }}</td>
           <td>
             <button class="btn-detail" @click="handleDetail(record)">详情</button>
-            <button v-if="record.result === 2 && !record.repairOrderId"
+            <button v-if="record.result === 2 && record.reviewResult === null"
+                    class="btn-review" @click="handleReview(record)">复核</button>
+            <button v-if="record.canRepair"
                     class="btn-repair" @click="handleCreateRepair(record)">报修</button>
+            <span v-if="record.result === 2 && record.reviewResult === 2" class="no-repair">不可报修</span>
           </td>
         </tr>
-        <tr v-if="inspectionList.length === 0">
-          <td colspan="10" class="empty">暂无巡检记录</td>
+        <tr v-if="!loadError && inspectionList.length === 0">
+          <td colspan="11" class="empty">{{ loading ? '加载中...' : '暂无巡检记录' }}</td>
         </tr>
       </tbody>
     </table>
 
     <InspectionForm :visible="formVisible" @close="formVisible = false" @success="handleFormSuccess" />
     <InspectionDetail :visible="detailVisible" :inspection-id="detailId" @close="detailVisible = false" />
+    <InspectionReview :visible="reviewVisible" :inspection="reviewRecord"
+                      @close="reviewVisible = false" @reviewed="handleReviewed" />
   </div>
 </template>
 
@@ -99,6 +128,9 @@ import { ref, computed, onMounted } from 'vue'
 import { inspectionApi, repairApi, areaApi, equipmentApi } from '../api'
 import InspectionForm from './InspectionForm.vue'
 import InspectionDetail from './InspectionDetail.vue'
+import InspectionReview from './InspectionReview.vue'
+
+const FILTER_STORAGE_KEY = 'inspection.list.filters'
 
 const props = defineProps({
   initialFilters: {
@@ -111,9 +143,14 @@ const emit = defineEmits(['back-dashboard'])
 const inspectionList = ref([])
 const areaOptions = ref([])
 const typeOptions = ref([])
+const loading = ref(false)
+const loadError = ref('')
+const filterError = ref('')
 const formVisible = ref(false)
 const detailVisible = ref(false)
 const detailId = ref(null)
+const reviewVisible = ref(false)
+const reviewRecord = ref(null)
 
 const defaultFilters = () => ({
   startDate: '',
@@ -121,10 +158,31 @@ const defaultFilters = () => ({
   areaId: '',
   equipmentType: '',
   result: '',
+  reviewStatus: '',
   repairStatus: ''
 })
 
+const loadSavedFilters = () => {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (saved) {
+      return { ...defaultFilters(), ...JSON.parse(saved) }
+    }
+  } catch (error) {
+    console.warn('读取本地巡检筛选条件失败:', error)
+  }
+  return defaultFilters()
+}
+
 const filters = ref(defaultFilters())
+
+const persistFilters = () => {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters.value))
+  } catch (error) {
+    console.warn('保存巡检筛选条件失败:', error)
+  }
+}
 
 const drillTip = computed(() => {
   const parts = []
@@ -143,7 +201,23 @@ const drillTip = computed(() => {
   return ''
 })
 
+const validateDateRange = () => {
+  if (filters.value.startDate && filters.value.endDate
+      && filters.value.startDate > filters.value.endDate) {
+    filterError.value = '巡检日开始日期不能晚于结束日期'
+    return false
+  }
+  filterError.value = ''
+  return true
+}
+
 const loadInspections = async () => {
+  if (!validateDateRange()) {
+    inspectionList.value = []
+    return
+  }
+  loading.value = true
+  loadError.value = ''
   try {
     const params = {}
     if (filters.value.startDate) params.startDate = filters.value.startDate
@@ -151,17 +225,20 @@ const loadInspections = async () => {
     if (filters.value.areaId !== '') params.areaId = filters.value.areaId
     if (filters.value.equipmentType !== '') params.equipmentType = filters.value.equipmentType
     if (filters.value.result !== '') params.result = filters.value.result
+    if (filters.value.reviewStatus !== '') params.reviewStatus = filters.value.reviewStatus
     if (filters.value.repairStatus !== '') params.repairStatus = filters.value.repairStatus
 
     const res = await inspectionApi.getInspections(params)
     if (res.data.code === 200) {
       inspectionList.value = res.data.data
     } else {
-      alert(res.data.message || '加载巡检记录失败')
+      loadError.value = res.data.message || '加载巡检记录失败，请稍后重试'
     }
   } catch (error) {
-    alert(error.response?.data?.message || '加载巡检记录失败，请稍后重试')
+    loadError.value = error.response?.data?.message || '接口请求失败，巡检记录加载失败，请稍后重试'
     console.error('加载巡检记录失败:', error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -189,16 +266,24 @@ const loadTypes = async () => {
 
 const applyInitialFilters = () => {
   const init = props.initialFilters || {}
-  filters.value = { ...defaultFilters(), ...init }
+  // 看板下钻条件优先，其次沿用本地保存的筛选，刷新后口径保持一致
+  filters.value = { ...defaultFilters(), ...loadSavedFilters(), ...init }
+}
+
+const applyFilters = () => {
+  persistFilters()
+  loadInspections()
 }
 
 const handleReset = () => {
   filters.value = defaultFilters()
+  persistFilters()
   loadInspections()
 }
 
 const clearDrillFilters = () => {
   filters.value = defaultFilters()
+  persistFilters()
   loadInspections()
 }
 
@@ -211,6 +296,15 @@ const handleDetail = (record) => {
   detailVisible.value = true
 }
 
+const handleReview = (record) => {
+  reviewRecord.value = record
+  reviewVisible.value = true
+}
+
+const handleReviewed = () => {
+  loadInspections()
+}
+
 const handleCreateRepair = async (record) => {
   if (!confirm(`确定为设备「${record.equipmentName}」创建报修单吗？维修期间设备不可调配。`)) return
 
@@ -219,15 +313,30 @@ const handleCreateRepair = async (record) => {
     if (res.data.code === 200) {
       loadInspections()
     } else {
-      alert(res.data.message || '创建报修单失败')
+      alert(res.data.message || '创建报修单失败，请稍后重试')
+      loadInspections()
     }
   } catch (error) {
-    alert(error.response?.data?.message || '创建报修单失败')
+    alert(error.response?.data?.message || '接口请求失败，报修单未创建，请稍后重试')
+    loadInspections()
   }
 }
 
 const handleFormSuccess = () => {
+  persistFilters()
   loadInspections()
+}
+
+const reviewStatusText = (reviewResult) => {
+  if (reviewResult === 1) return '属实'
+  if (reviewResult === 2) return '不属实'
+  return '待复核'
+}
+
+const reviewStatusClass = (reviewResult) => {
+  if (reviewResult === 1) return 'confirmed'
+  if (reviewResult === 2) return 'rejected'
+  return 'pending'
 }
 
 const repairStatusText = (status) => {
@@ -339,6 +448,48 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.filter-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.filter-error {
+  margin: 8px 0 0;
+  color: #f56c6c;
+  font-size: 13px;
+}
+
+.load-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.load-banner.error {
+  background: #fef0f0;
+  border: 1px solid #fbc4c4;
+  color: #f56c6c;
+}
+
+.btn-retry {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-retry:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
+}
+
 .filter-row input,
 .filter-row select {
   padding: 6px 10px;
@@ -414,6 +565,32 @@ onMounted(() => {
   color: #f56c6c;
 }
 
+.review-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.review-tag.pending {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.review-tag.confirmed {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.review-tag.rejected {
+  background: #f4f4f5;
+  color: #909399;
+}
+
+.no-review {
+  color: #c0c4cc;
+  font-size: 12px;
+}
+
 .repair-tag {
   padding: 2px 8px;
   border-radius: 4px;
@@ -451,6 +628,11 @@ onMounted(() => {
 
 .btn-detail {
   background: #409eff;
+  color: #fff;
+}
+
+.btn-review {
+  background: #67c23a;
   color: #fff;
 }
 

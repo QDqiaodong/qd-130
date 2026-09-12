@@ -5,6 +5,7 @@ import com.example.maternal.dto.ApiResponse;
 import com.example.maternal.dto.InspectionDetailDTO;
 import com.example.maternal.dto.InspectionRecordDTO;
 import com.example.maternal.dto.InspectionRecordRequest;
+import com.example.maternal.dto.InspectionReviewRequest;
 import com.example.maternal.service.InspectionRecordService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -27,9 +28,10 @@ public class InspectionRecordController {
             @RequestParam(required = false) Long areaId,
             @RequestParam(required = false) Integer result,
             @RequestParam(required = false) Integer repairStatus,
-            @RequestParam(required = false) String equipmentType) {
+            @RequestParam(required = false) String equipmentType,
+            @RequestParam(required = false) Integer reviewStatus) {
         return ApiResponse.success(inspectionRecordService
-                .getInspections(startDate, endDate, areaId, result, repairStatus, equipmentType));
+                .getInspections(startDate, endDate, areaId, result, repairStatus, equipmentType, reviewStatus));
     }
 
     @GetMapping("/{id}")
@@ -44,5 +46,12 @@ public class InspectionRecordController {
     @PostMapping
     public ApiResponse<InspectionRecordDTO> createInspection(@RequestBody InspectionRecordRequest request) {
         return ApiResponse.success("巡检记录提交成功", inspectionRecordService.createInspection(request));
+    }
+
+    /** 值班复核：对已标异常的巡检补录复核人、复核时间与是否属实 */
+    @PostMapping("/{id}/review")
+    public ApiResponse<InspectionRecordDTO> reviewInspection(@PathVariable Long id,
+                                                             @RequestBody InspectionReviewRequest request) {
+        return ApiResponse.success("复核提交成功", inspectionRecordService.reviewInspection(id, request));
     }
 }

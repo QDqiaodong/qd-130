@@ -51,7 +51,8 @@ export const inspectionPlanApi = {
 export const inspectionApi = {
   getInspections: (params) => api.get('/inspections', { params }),
   getInspectionDetail: (id) => api.get(`/inspections/${id}`),
-  createInspection: (data) => api.post('/inspections', data)
+  createInspection: (data) => api.post('/inspections', data),
+  reviewInspection: (id, data) => api.post(`/inspections/${id}/review`, data)
 }
 
 export const repairApi = {

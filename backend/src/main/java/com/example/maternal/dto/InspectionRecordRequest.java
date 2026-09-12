@@ -23,6 +23,4 @@ public class InspectionRecordRequest {
     private String inspector;
 
     private String remark;
-
-    private Boolean createRepair;
 }

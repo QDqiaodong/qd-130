@@ -51,6 +51,18 @@ public class InspectionRecord {
     @Column(name = "remark", length = 500)
     private String remark;
 
+    @Column(name = "reviewer", length = 50)
+    private String reviewer;
+
+    @Column(name = "review_time")
+    private LocalDateTime reviewTime;
+
+    @Column(name = "review_result")
+    private Integer reviewResult;
+
+    @Column(name = "review_note", length = 500)
+    private String reviewNote;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

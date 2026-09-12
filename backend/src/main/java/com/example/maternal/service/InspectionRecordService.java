@@ -4,6 +4,7 @@ package com.example.maternal.service;
 import com.example.maternal.dto.InspectionDetailDTO;
 import com.example.maternal.dto.InspectionRecordDTO;
 import com.example.maternal.dto.InspectionRecordRequest;
+import com.example.maternal.dto.InspectionReviewRequest;
 import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.TimelineItem;
 import com.example.maternal.entity.Area;
@@ -23,12 +24,20 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class InspectionRecordService {
+
+    /** 复核结论：1-属实，2-不属实 */
+    public static final int REVIEW_RESULT_CONFIRMED = 1;
+    public static final int REVIEW_RESULT_REJECTED = 2;
+
+    /** 复核状态筛选值：-1 表示待复核（异常且尚未复核） */
+    public static final int REVIEW_STATUS_PENDING = -1;
 
     private final InspectionRecordRepository inspectionRecordRepository;
     private final InspectionPlanRepository inspectionPlanRepository;
@@ -104,16 +113,47 @@ public class InspectionRecordService {
             inspectionPlanRepository.save(plan);
         }
 
-        InspectionRecordDTO dto = convertToDTO(saved);
+        // 异常巡检不再随登记直接报修：需值班复核属实后才允许转报修
+        return convertToDTO(saved);
+    }
 
-        if (request.getResult() == 2 && Boolean.TRUE.equals(request.getCreateRepair())) {
-            RepairOrderDTO repair = repairOrderService.createRepairOrder(saved.getId(), request.getInspector());
-            dto.setRepairOrderId(repair.getId());
-            dto.setRepairNo(repair.getRepairNo());
-            dto.setRepairStatus(repair.getStatus());
+    /**
+     * 值班复核：仅已标异常且尚未复核的巡检可复核；结论不属实时必须填写说明。
+     * 复核结论落库后不再允许修改，属实才允许转报修，不属实不能再报修。
+     */
+    @Transactional
+    public InspectionRecordDTO reviewInspection(Long id, InspectionReviewRequest request) {
+        InspectionRecord record = inspectionRecordRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("巡检记录不存在"));
+
+        if (record.getResult() == null || record.getResult() != 2) {
+            throw new RuntimeException("仅巡检结果为异常的记录需要复核");
+        }
+        if (record.getReviewResult() != null) {
+            throw new RuntimeException("该巡检记录已完成复核，请勿重复复核");
+        }
+        if (request.getReviewer() == null || request.getReviewer().trim().isEmpty()) {
+            throw new RuntimeException("复核人不能为空");
+        }
+        if (request.getReviewTime() == null) {
+            throw new RuntimeException("复核时间不能为空");
+        }
+        if (request.getConfirmed() == null) {
+            throw new RuntimeException("请选择复核结论（是否属实）");
+        }
+        if (Boolean.FALSE.equals(request.getConfirmed())
+                && (request.getReviewNote() == null || request.getReviewNote().trim().isEmpty())) {
+            throw new RuntimeException("复核结论为不属实时必须填写复核说明");
         }
 
-        return dto;
+        record.setReviewer(request.getReviewer().trim());
+        record.setReviewTime(request.getReviewTime());
+        record.setReviewResult(Boolean.TRUE.equals(request.getConfirmed())
+                ? REVIEW_RESULT_CONFIRMED : REVIEW_RESULT_REJECTED);
+        record.setReviewNote(request.getReviewNote() != null && !request.getReviewNote().trim().isEmpty()
+                ? request.getReviewNote().trim() : null);
+
+        return convertToDTO(inspectionRecordRepository.save(record));
     }
 
     public List<InspectionRecordDTO> getInspections(LocalDate startDate, LocalDate endDate, Long areaId,
@@ -123,6 +163,15 @@ public class InspectionRecordService {
 
     public List<InspectionRecordDTO> getInspections(LocalDate startDate, LocalDate endDate, Long areaId,
                                                     Integer result, Integer repairStatus, String equipmentType) {
+        return getInspections(startDate, endDate, areaId, result, repairStatus, equipmentType, null);
+    }
+
+    /**
+     * @param reviewStatus 复核状态：-1 待复核（异常且未复核），1 属实，2 不属实；null 不过滤
+     */
+    public List<InspectionRecordDTO> getInspections(LocalDate startDate, LocalDate endDate, Long areaId,
+                                                    Integer result, Integer repairStatus, String equipmentType,
+                                                    Integer reviewStatus) {
         Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
         List<InspectionRecord> records;
         if (repairStatus == null && equipmentType != null) {
@@ -144,9 +193,21 @@ public class InspectionRecordService {
                     .filter(r -> scopeAreaIds.contains(r.getAreaId()))
                     .collect(Collectors.toList());
         }
+        if (reviewStatus != null) {
+            records = records.stream()
+                    .filter(r -> matchesReviewStatus(r, reviewStatus))
+                    .collect(Collectors.toList());
+        }
         return records.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    private boolean matchesReviewStatus(InspectionRecord record, Integer reviewStatus) {
+        if (reviewStatus == REVIEW_STATUS_PENDING) {
+            return record.getResult() != null && record.getResult() == 2 && record.getReviewResult() == null;
+        }
+        return Objects.equals(record.getReviewResult(), reviewStatus);
     }
 
     public InspectionDetailDTO getInspectionDetail(Long id) {
@@ -162,6 +223,16 @@ public class InspectionRecordService {
         timeline.add(new TimelineItem(record.getCreatedAt(), "提交巡检记录",
                 "巡检单号 " + record.getInspectionNo() + "，结果：" + (record.getResult() == 1 ? "正常" : "异常") +
                         (record.getInspector() != null ? "，巡检员：" + record.getInspector() : ""), "inspection"));
+
+        if (record.getReviewResult() != null) {
+            timeline.add(new TimelineItem(record.getReviewTime(), "值班复核",
+                    "复核人：" + (record.getReviewer() != null ? record.getReviewer() : "-")
+                            + "，结论：" + (record.getReviewResult() == REVIEW_RESULT_CONFIRMED ? "属实" : "不属实")
+                            + (record.getReviewNote() != null && !record.getReviewNote().isEmpty()
+                                    ? "，说明：" + record.getReviewNote() : "")
+                            + (record.getReviewResult() == REVIEW_RESULT_CONFIRMED ? "，可转报修" : "，不可转报修"),
+                    "review"));
+        }
 
         repairOrderRepository.findByInspectionId(record.getId()).ifPresent(order -> {
             RepairOrderDTO repairDTO = repairOrderService.getRepairById(order.getId());
@@ -206,6 +277,10 @@ public class InspectionRecordService {
         dto.setPhotoUrl(record.getPhotoUrl());
         dto.setInspector(record.getInspector());
         dto.setRemark(record.getRemark());
+        dto.setReviewer(record.getReviewer());
+        dto.setReviewTime(record.getReviewTime());
+        dto.setReviewResult(record.getReviewResult());
+        dto.setReviewNote(record.getReviewNote());
         dto.setCreatedAt(record.getCreatedAt());
 
         if (record.getPlanId() != null) {
@@ -228,6 +303,11 @@ public class InspectionRecordService {
                     dto.setRepairNo(order.getRepairNo());
                     dto.setRepairStatus(order.getStatus());
                 });
+
+        // 可否报修与复核结论同源计算，保证列表、详情与刷新后的口径一致
+        dto.setCanRepair(record.getResult() != null && record.getResult() == 2
+                && record.getReviewResult() != null && record.getReviewResult() == REVIEW_RESULT_CONFIRMED
+                && dto.getRepairOrderId() == null);
 
         return dto;
     }

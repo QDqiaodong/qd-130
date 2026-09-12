@@ -52,11 +52,7 @@
               <input type="text" v-model="form.photoUrl" placeholder="请输入异常照片URL" />
             </div>
 
-            <div class="form-group checkbox-group">
-              <label>
-                <input type="checkbox" v-model="form.createRepair" /> 同时创建报修单（维修期间设备不可调配）
-              </label>
-            </div>
+            <p class="review-flow-tip">异常巡检提交后需值班复核，复核属实才能转报修</p>
           </template>
 
           <div class="form-group">
@@ -103,8 +99,7 @@ const defaultForm = () => ({
   abnormalDesc: '',
   photoUrl: '',
   inspector: '',
-  remark: '',
-  createRepair: true
+  remark: ''
 })
 
 const form = ref(defaultForm())
@@ -154,8 +149,7 @@ const handleSubmit = async () => {
       abnormalDesc: form.value.result === 2 ? form.value.abnormalDesc : null,
       photoUrl: form.value.result === 2 ? form.value.photoUrl : null,
       inspector: form.value.inspector,
-      remark: form.value.remark,
-      createRepair: form.value.result === 2 && form.value.createRepair
+      remark: form.value.remark
     }
 
     const res = await inspectionApi.createInspection(data)
@@ -287,6 +281,16 @@ watch(() => props.visible, (val) => {
   gap: 6px;
   color: #e6a23c;
   cursor: pointer;
+}
+
+.review-flow-tip {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 4px;
+  color: #e6a23c;
+  font-size: 12px;
 }
 
 .form-buttons {

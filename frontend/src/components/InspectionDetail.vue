@@ -36,6 +36,28 @@
           </div>
         </div>
 
+        <div class="detail-section" v-if="detail.record.result === 2">
+          <h4>复核信息</h4>
+          <div class="info-grid" v-if="detail.record.reviewResult">
+            <div class="info-item"><span class="label">复核人:</span><span>{{ detail.record.reviewer || '-' }}</span></div>
+            <div class="info-item"><span class="label">复核时间:</span><span>{{ formatTime(detail.record.reviewTime) }}</span></div>
+            <div class="info-item">
+              <span class="label">复核结论:</span>
+              <span :class="['review-tag', detail.record.reviewResult === 1 ? 'confirmed' : 'rejected']">
+                {{ detail.record.reviewResult === 1 ? '属实' : '不属实' }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="label">可否报修:</span>
+              <span>{{ detail.record.reviewResult === 1 ? '可转报修' : '不可报修' }}</span>
+            </div>
+            <div class="info-item full" v-if="detail.record.reviewNote">
+              <span class="label">复核说明:</span><span>{{ detail.record.reviewNote }}</span>
+            </div>
+          </div>
+          <p v-else class="empty">待值班复核，复核属实后才允许转报修</p>
+        </div>
+
         <div class="detail-section" v-if="detail.repairOrder">
           <h4>报修单信息</h4>
           <div class="info-grid">
@@ -234,6 +256,22 @@ watch(() => props.visible, (val) => {
   color: #f56c6c;
 }
 
+.review-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.review-tag.confirmed {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.review-tag.rejected {
+  background: #f4f4f5;
+  color: #909399;
+}
+
 .repair-tag {
   padding: 2px 8px;
   border-radius: 4px;
@@ -306,6 +344,10 @@ watch(() => props.visible, (val) => {
 
 .timeline-dot.inspection {
   background: #e6a23c;
+}
+
+.timeline-dot.review {
+  background: #67c23a;
 }
 
 .timeline-dot.repair {
