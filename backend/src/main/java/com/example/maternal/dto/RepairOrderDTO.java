@@ -43,6 +43,13 @@ public class RepairOrderDTO {
 
     private String repairNote;
 
+    private String urgeNote;
+
+    private LocalDateTime urgeTime;
+
+    /** 已等待小时数（仅超时催办统计场景返回） */
+    private Long waitedHours;
+
     private LocalDateTime createdAt;
 
     private List<TimelineItem> timeline;

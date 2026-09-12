@@ -56,6 +56,12 @@ public class RepairOrder {
     @Column(name = "repair_note", length = 500)
     private String repairNote;
 
+    @Column(name = "urge_note", length = 500)
+    private String urgeNote;
+
+    @Column(name = "urge_time")
+    private LocalDateTime urgeTime;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

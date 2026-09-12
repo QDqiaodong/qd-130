@@ -1,9 +1,12 @@
 
 package com.example.maternal.service;
 
+import com.example.maternal.dto.OverdueRepairsDTO;
 import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.RepairStatusRequest;
+import com.example.maternal.dto.RepairUrgeRequest;
 import com.example.maternal.dto.TimelineItem;
+import com.example.maternal.entity.Area;
 import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.InspectionRecord;
 import com.example.maternal.entity.RepairOrder;
@@ -18,8 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +40,72 @@ public class RepairOrderService {
     public static final int STATUS_PENDING = 0;
     public static final int STATUS_REPAIRING = 1;
     public static final int STATUS_RESTORED = 2;
+
+    /** 约定等待小时数上限（约一年），防止误填超大值 */
+    public static final int MAX_WAIT_HOURS = 8760;
+
+    /**
+     * 超时催办统计：仍停在待处理且等待时长达到区域约定小时数的报修单。
+     * 件数与清单来自同一批过滤结果，保证刷新后件数与清单行数一致。
+     */
+    public OverdueRepairsDTO getOverdueRepairs(Integer waitHours, Long areaId) {
+        if (waitHours == null || waitHours <= 0) {
+            throw new RuntimeException("约定等待小时数必须大于0");
+        }
+        if (waitHours > MAX_WAIT_HOURS) {
+            throw new RuntimeException("约定等待小时数不能超过" + MAX_WAIT_HOURS + "（约一年）");
+        }
+
+        Area selectedArea = null;
+        if (areaId != null) {
+            selectedArea = areaRepository.findById(areaId)
+                    .orElseThrow(() -> new RuntimeException("所选区域不存在"));
+        }
+        Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime cutoff = now.minusHours(waitHours);
+        List<RepairOrderDTO> orders = repairOrderRepository.findOverduePending(cutoff).stream()
+                .filter(order -> scopeAreaIds == null || scopeAreaIds.contains(order.getAreaId()))
+                .map(order -> {
+                    RepairOrderDTO dto = convertToDTO(order);
+                    dto.setWaitedHours(Math.max(0L, ChronoUnit.HOURS.between(order.getCreatedAt(), now)));
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        OverdueRepairsDTO result = new OverdueRepairsDTO();
+        result.setWaitHours(waitHours);
+        result.setAreaId(areaId);
+        result.setAreaName(selectedArea != null ? selectedArea.getName() : null);
+        result.setOrders(orders);
+        result.setOverdueCount((long) orders.size());
+        return result;
+    }
+
+    /**
+     * 催办：仅允许对待处理单操作，可改跟进人并留下催办说明（不改变报修单状态）。
+     */
+    @Transactional
+    public RepairOrderDTO urgeRepair(Long id, RepairUrgeRequest request) {
+        RepairOrder order = repairOrderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("报修单不存在"));
+
+        if (order.getStatus() == null || order.getStatus() != STATUS_PENDING) {
+            throw new RuntimeException("仅待处理的报修单才能催办，当前状态为" + statusName(order.getStatus()));
+        }
+        if (request.getUrgeNote() == null || request.getUrgeNote().trim().isEmpty()) {
+            throw new RuntimeException("催办说明不能为空");
+        }
+
+        if (request.getFollowUpPerson() != null && !request.getFollowUpPerson().trim().isEmpty()) {
+            order.setRepairman(request.getFollowUpPerson().trim());
+        }
+        order.setUrgeNote(request.getUrgeNote().trim());
+        order.setUrgeTime(LocalDateTime.now());
+
+        return convertToDTO(repairOrderRepository.save(order));
+    }
 
     @Transactional
     public RepairOrderDTO createRepairOrder(Long inspectionId, String reporter) {
@@ -162,6 +233,11 @@ public class RepairOrderService {
                                 (record.getAbnormalDesc() != null ? "，" + record.getAbnormalDesc() : ""), "inspection")));
         timeline.add(new TimelineItem(order.getCreatedAt(), "创建报修单",
                 "报修单号 " + order.getRepairNo() + "，报修人：" + (order.getReporter() != null ? order.getReporter() : "-"), "repair"));
+        if (order.getUrgeTime() != null) {
+            timeline.add(new TimelineItem(order.getUrgeTime(), "超时催办",
+                    "跟进人：" + (order.getRepairman() != null ? order.getRepairman() : "-")
+                            + "，催办说明：" + (order.getUrgeNote() != null ? order.getUrgeNote() : "-"), "urge"));
+        }
         if (order.getStartTime() != null) {
             timeline.add(new TimelineItem(order.getStartTime(), "开始维修",
                     "维修人：" + (order.getRepairman() != null ? order.getRepairman() : "-") + "，设备维修期间不可调配", "repair"));
@@ -200,6 +276,8 @@ public class RepairOrderService {
         dto.setStartTime(order.getStartTime());
         dto.setFinishTime(order.getFinishTime());
         dto.setRepairNote(order.getRepairNote());
+        dto.setUrgeNote(order.getUrgeNote());
+        dto.setUrgeTime(order.getUrgeTime());
         dto.setCreatedAt(order.getCreatedAt());
 
         inspectionRecordRepository.findById(order.getInspectionId())

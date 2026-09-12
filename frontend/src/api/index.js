@@ -58,7 +58,9 @@ export const repairApi = {
   getRepairs: (params) => api.get('/repairs', { params }),
   getRepairById: (id) => api.get(`/repairs/${id}`),
   createRepair: (data) => api.post('/repairs', data),
-  updateRepairStatus: (id, data) => api.put(`/repairs/${id}/status`, data)
+  updateRepairStatus: (id, data) => api.put(`/repairs/${id}/status`, data),
+  getOverdueRepairs: (params) => api.get('/repairs/overdue', { params }),
+  urgeRepair: (id, data) => api.put(`/repairs/${id}/urge`, data)
 }
 
 export const dashboardApi = {

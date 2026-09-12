@@ -122,6 +122,8 @@ CREATE TABLE repair_order (
     start_time DATETIME COMMENT '开始维修时间',
     finish_time DATETIME COMMENT '恢复完成时间',
     repair_note VARCHAR(500) COMMENT '维修说明',
+    urge_note VARCHAR(500) COMMENT '最近催办说明',
+    urge_time DATETIME COMMENT '最近催办时间',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     UNIQUE KEY uk_repair_inspection (inspection_id),

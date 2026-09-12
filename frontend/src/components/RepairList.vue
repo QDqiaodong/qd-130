@@ -34,6 +34,46 @@
       </div>
     </div>
 
+    <div class="overdue-panel">
+      <div class="overdue-header">
+        <h4>超时催办</h4>
+        <span class="overdue-tip">按报修单记录区域（含下级）统计超过约定等待小时仍停在待处理的报修单</span>
+      </div>
+      <div class="overdue-controls">
+        <label class="overdue-label">区域</label>
+        <select v-model="overdueAreaId">
+          <option value="">全部区域</option>
+          <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
+        </select>
+        <label class="overdue-label">约定等待小时</label>
+        <input type="text" v-model="overdueHours" class="overdue-hours-input" placeholder="如 24"
+               @keyup.enter="loadOverdue" />
+        <button class="btn-overdue-stat" :disabled="overdueLoading" @click="loadOverdue">
+          {{ overdueLoading ? '统计中...' : '统计' }}
+        </button>
+        <template v-if="overdueResult">
+          <span class="overdue-result-text">超时催办</span>
+          <button class="overdue-count" :disabled="overdueResult.overdueCount === 0"
+                  title="点击查看催办清单" @click="openUrgeList">
+            {{ overdueResult.overdueCount }}
+          </button>
+          <span class="overdue-result-text">件</span>
+          <span class="overdue-scope">
+            （{{ overdueResult.areaName || '全部区域' }} · 约定 {{ overdueResult.waitHours }} 小时）
+          </span>
+          <span v-if="overdueStale" class="overdue-stale">统计条件已修改，请重新统计</span>
+        </template>
+      </div>
+      <p v-if="overdueHoursError" class="overdue-error">{{ overdueHoursError }}</p>
+      <div v-if="overdueError" class="overdue-banner error">
+        <span>{{ overdueError }}</span>
+        <button class="btn-overdue-retry" :disabled="overdueLoading" @click="loadOverdue">重试</button>
+      </div>
+      <div v-else-if="overdueResult && overdueResult.overdueCount === 0" class="overdue-banner empty">
+        当前条件下没有超时待处理的报修单，无需催办
+      </div>
+    </div>
+
     <table class="repair-table">
       <thead>
         <tr>
@@ -135,6 +175,9 @@
               <div class="info-item"><span class="label">报修人:</span><span>{{ detail.reporter || '-' }}</span></div>
               <div class="info-item full"><span class="label">故障描述:</span><span>{{ detail.faultDesc || '-' }}</span></div>
               <div class="info-item full" v-if="detail.repairNote"><span class="label">维修说明:</span><span>{{ detail.repairNote }}</span></div>
+              <div class="info-item full" v-if="detail.urgeNote">
+                <span class="label">最近催办:</span><span>{{ detail.urgeNote }}（{{ formatTime(detail.urgeTime) }}）</span>
+              </div>
             </div>
             <div class="photo-preview" v-if="detail.photoUrl">
               <span class="label">故障照片:</span>
@@ -160,11 +203,97 @@
         </div>
       </div>
     </div>
+    <div class="modal-overlay" v-if="urgeListVisible" @click="urgeListVisible = false">
+      <div class="modal-content urge-list-modal" @click.stop>
+        <div class="modal-header">
+          <h3>超时催办清单</h3>
+          <button class="close-btn" @click="urgeListVisible = false">×</button>
+        </div>
+        <div class="modal-body" v-if="overdueResult">
+          <div class="urge-list-summary">
+            <span>
+              {{ overdueResult.areaName || '全部区域' }} · 约定等待 {{ overdueResult.waitHours }} 小时 ·
+              仅显示已超时的待处理单，共 {{ overdueResult.overdueCount }} 件
+            </span>
+            <button class="btn-urge-refresh" :disabled="overdueLoading" @click="loadOverdue">
+              {{ overdueLoading ? '刷新中...' : '刷新' }}
+            </button>
+          </div>
+          <p v-if="urgeListTip" class="urge-list-tip">{{ urgeListTip }}</p>
+          <table class="urge-table">
+            <thead>
+              <tr>
+                <th>报修单号</th>
+                <th>设备</th>
+                <th>区域</th>
+                <th>报修时间</th>
+                <th>已等待</th>
+                <th>跟进人</th>
+                <th>最近催办说明</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in overdueResult.orders" :key="order.id">
+                <td>{{ order.repairNo }}</td>
+                <td>{{ order.equipmentName }}（{{ order.equipmentNo }}）</td>
+                <td>{{ order.areaName || '-' }}</td>
+                <td>{{ formatTime(order.createdAt) }}</td>
+                <td><span class="waited-tag">{{ order.waitedHours }} 小时</span></td>
+                <td>{{ order.repairman || '-' }}</td>
+                <td class="desc-cell" :title="order.urgeNote">{{ order.urgeNote || '-' }}</td>
+                <td><button class="btn-urge" @click="openUrgeForm(order)">催办</button></td>
+              </tr>
+              <tr v-if="overdueResult.orders.length === 0">
+                <td colspan="8" class="empty">没有超时待处理的报修单</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" v-if="urgeFormVisible" @click="urgeFormVisible = false">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>催办跟进</h3>
+          <button class="close-btn" @click="urgeFormVisible = false">×</button>
+        </div>
+        <div class="modal-body" v-if="urgeOrder">
+          <div class="order-info">
+            <span class="label">报修单号:</span><span>{{ urgeOrder.repairNo }}</span>
+          </div>
+          <div class="order-info">
+            <span class="label">设备:</span><span>{{ urgeOrder.equipmentName }}（{{ urgeOrder.equipmentNo }}）</span>
+          </div>
+          <div class="order-info">
+            <span class="label">已等待:</span>
+            <span>{{ urgeOrder.waitedHours }} 小时（约定 {{ overdueResult ? overdueResult.waitHours : '-' }} 小时）</span>
+          </div>
+          <p class="transition-tip">催办不改变报修单状态，仅更新跟进人并留下催办说明。</p>
+          <div class="form-group">
+            <label>跟进人:</label>
+            <input type="text" v-model="urgeForm.followUpPerson" placeholder="留空则不修改原跟进人" />
+          </div>
+          <div class="form-group">
+            <label>催办说明:</label>
+            <textarea v-model="urgeForm.urgeNote" rows="3" placeholder="请填写催办说明（必填）"></textarea>
+          </div>
+          <p v-if="urgeFormError" class="overdue-error">{{ urgeFormError }}</p>
+          <div class="form-buttons">
+            <button type="button" class="btn-cancel" @click="urgeFormVisible = false">取消</button>
+            <button type="button" class="btn-submit" :disabled="urging" @click="handleUrge">
+              {{ urging ? '提交中...' : '确认催办' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { repairApi, areaApi, equipmentApi } from '../api'
 
 const props = defineProps({
@@ -186,6 +315,22 @@ const submitting = ref(false)
 const detailVisible = ref(false)
 const detail = ref(null)
 const photoError = ref(false)
+
+// 超时催办：约定等待小时 + 区域 → 件数 → 催办清单
+const overdueAreaId = ref('')
+const overdueHours = ref('24')
+const overdueResult = ref(null)
+const overdueLoading = ref(false)
+const overdueError = ref('')
+const overdueHoursError = ref('')
+const overdueStale = ref(false)
+const urgeListVisible = ref(false)
+const urgeListTip = ref('')
+const urgeFormVisible = ref(false)
+const urgeOrder = ref(null)
+const urgeForm = ref({ followUpPerson: '', urgeNote: '' })
+const urgeFormError = ref('')
+const urging = ref(false)
 
 const defaultFilters = () => ({
   startDate: '',
@@ -293,6 +438,106 @@ const backToDashboard = () => {
   emit('back-dashboard')
 }
 
+// 校验约定等待小时数，填错时给出提示并阻止请求
+const validateOverdueHours = () => {
+  overdueHoursError.value = ''
+  const raw = String(overdueHours.value).trim()
+  if (!raw) {
+    overdueHoursError.value = '请填写约定等待小时数'
+    return null
+  }
+  if (!/^\d+$/.test(raw)) {
+    overdueHoursError.value = '约定等待小时数需为大于0的整数'
+    return null
+  }
+  const hours = Number(raw)
+  if (hours <= 0) {
+    overdueHoursError.value = '约定等待小时数必须大于0'
+    return null
+  }
+  if (hours > 8760) {
+    overdueHoursError.value = '约定等待小时数不能超过8760（约一年）'
+    return null
+  }
+  return hours
+}
+
+// 统计超时催办：件数与清单来自同一响应，刷新后两者始终一致
+const loadOverdue = async () => {
+  const hours = validateOverdueHours()
+  if (hours === null) return
+  overdueLoading.value = true
+  overdueError.value = ''
+  try {
+    const params = { waitHours: hours }
+    if (overdueAreaId.value !== '') params.areaId = overdueAreaId.value
+    const res = await repairApi.getOverdueRepairs(params)
+    if (res.data.code === 200) {
+      overdueResult.value = res.data.data
+      overdueStale.value = false
+    } else {
+      overdueError.value = res.data.message || '超时催办统计失败，请稍后重试'
+    }
+  } catch (error) {
+    overdueError.value = error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，请稍后重试' : '超时催办统计请求失败，请检查网络或稍后重试')
+  } finally {
+    overdueLoading.value = false
+  }
+}
+
+// 改小时或区域后提示需重新统计，避免旧结果被误读
+watch([overdueHours, overdueAreaId], () => {
+  if (overdueResult.value) overdueStale.value = true
+})
+
+const openUrgeList = () => {
+  if (!overdueResult.value || overdueResult.value.overdueCount === 0) return
+  urgeListTip.value = ''
+  urgeListVisible.value = true
+}
+
+const openUrgeForm = (order) => {
+  urgeOrder.value = order
+  urgeForm.value = { followUpPerson: order.repairman || '', urgeNote: '' }
+  urgeFormError.value = ''
+  urgeFormVisible.value = true
+}
+
+const handleUrge = async () => {
+  if (urging.value || !urgeOrder.value) return
+  if (!urgeForm.value.urgeNote || !urgeForm.value.urgeNote.trim()) {
+    urgeFormError.value = '请填写催办说明'
+    return
+  }
+  urging.value = true
+  urgeFormError.value = ''
+  try {
+    const res = await repairApi.urgeRepair(urgeOrder.value.id, {
+      followUpPerson: urgeForm.value.followUpPerson,
+      urgeNote: urgeForm.value.urgeNote.trim()
+    })
+    if (res.data.code === 200) {
+      urgeFormVisible.value = false
+      urgeListTip.value = res.data.message || '催办成功'
+      loadRepairs()
+      // 件数与清单一同刷新，保持一致
+      await loadOverdue()
+    } else {
+      urgeFormError.value = res.data.message || '催办失败，请稍后重试'
+    }
+  } catch (error) {
+    urgeFormError.value = error.response?.data?.message || '催办请求失败，请稍后重试'
+  } finally {
+    urging.value = false
+  }
+}
+
+// 状态流转后同步刷新超时统计（已开始维修的单不再属于超时待处理）
+const refreshOverdueIfLoaded = () => {
+  if (overdueResult.value) loadOverdue()
+}
+
 const openTransition = (order, target) => {
   currentOrder.value = order
   transitionTarget.value = target
@@ -313,6 +558,7 @@ const handleTransition = async () => {
     if (res.data.code === 200) {
       transitionVisible.value = false
       loadRepairs()
+      refreshOverdueIfLoaded()
     } else {
       alert(res.data.message || '状态更新失败')
     }
@@ -768,6 +1014,228 @@ onMounted(() => {
 
 .timeline-dot.repair {
   background: #409eff;
+}
+
+.timeline-dot.urge {
+  background: #f56c6c;
+}
+
+.overdue-panel {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 4px;
+}
+
+.overdue-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.overdue-header h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #333;
+  border-left: 3px solid #e6a23c;
+  padding-left: 8px;
+}
+
+.overdue-tip {
+  color: #c0c4cc;
+  font-size: 12px;
+}
+
+.overdue-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.overdue-label {
+  color: #666;
+  font-size: 14px;
+}
+
+.overdue-controls select,
+.overdue-controls input {
+  padding: 6px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.overdue-hours-input {
+  width: 90px;
+}
+
+.btn-overdue-stat {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #e6a23c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-overdue-stat:disabled {
+  background: #f3d19e;
+  cursor: not-allowed;
+}
+
+.overdue-result-text {
+  color: #666;
+  font-size: 14px;
+}
+
+.overdue-count {
+  border: none;
+  background: none;
+  color: #f56c6c;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 2px;
+  text-decoration: underline;
+}
+
+.overdue-count:disabled {
+  color: #c0c4cc;
+  cursor: default;
+  text-decoration: none;
+}
+
+.overdue-scope {
+  color: #909399;
+  font-size: 13px;
+}
+
+.overdue-stale {
+  color: #e6a23c;
+  font-size: 12px;
+}
+
+.overdue-error {
+  margin: 8px 0 0;
+  color: #f56c6c;
+  font-size: 13px;
+}
+
+.overdue-banner {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overdue-banner.error {
+  background: #fef0f0;
+  color: #f56c6c;
+  border: 1px solid #fbc4c4;
+}
+
+.overdue-banner.empty {
+  background: #f0f9eb;
+  color: #67c23a;
+  border: 1px solid #c2e7b0;
+}
+
+.btn-overdue-retry {
+  padding: 3px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #f56c6c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.urge-list-modal {
+  max-width: 960px;
+}
+
+.urge-list-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 13px;
+}
+
+.btn-urge-refresh {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-urge-refresh:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
+}
+
+.urge-list-tip {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  background: #f0f9eb;
+  color: #67c23a;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.urge-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.urge-table th,
+.urge-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+}
+
+.urge-table th {
+  background: #f8f9fa;
+  color: #666;
+  font-weight: bold;
+}
+
+.waited-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #fef0f0;
+  color: #f56c6c;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.btn-urge {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: #f56c6c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .timeline-title {

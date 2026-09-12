@@ -2,8 +2,10 @@
 package com.example.maternal.controller;
 
 import com.example.maternal.dto.ApiResponse;
+import com.example.maternal.dto.OverdueRepairsDTO;
 import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.RepairStatusRequest;
+import com.example.maternal.dto.RepairUrgeRequest;
 import com.example.maternal.service.RepairOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -50,6 +52,18 @@ public class RepairOrderController {
             return ApiResponse.error(400, "巡检记录ID不能为空");
         }
         return ApiResponse.success("报修单创建成功", repairOrderService.createRepairOrder(inspectionId, reporter));
+    }
+
+    @GetMapping("/overdue")
+    public ApiResponse<OverdueRepairsDTO> getOverdueRepairs(
+            @RequestParam(required = false) Integer waitHours,
+            @RequestParam(required = false) Long areaId) {
+        return ApiResponse.success(repairOrderService.getOverdueRepairs(waitHours, areaId));
+    }
+
+    @PutMapping("/{id}/urge")
+    public ApiResponse<RepairOrderDTO> urgeRepair(@PathVariable Long id, @RequestBody RepairUrgeRequest request) {
+        return ApiResponse.success("催办成功，已更新跟进人和催办说明", repairOrderService.urgeRepair(id, request));
     }
 
     @PutMapping("/{id}/status")

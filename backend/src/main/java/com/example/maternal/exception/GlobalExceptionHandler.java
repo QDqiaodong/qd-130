@@ -22,6 +22,8 @@ public class GlobalExceptionHandler {
         String message = "请求参数不合法";
         if (e.getRequiredType() != null && java.time.LocalDate.class.isAssignableFrom(e.getRequiredType())) {
             message = "日期参数格式不合法，正确格式为 yyyy-MM-dd（例如 2026-09-01）";
+        } else if ("waitHours".equals(e.getName())) {
+            message = "约定等待小时数不合法，请填写大于0的整数";
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(400, message));

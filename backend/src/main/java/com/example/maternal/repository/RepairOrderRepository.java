@@ -46,4 +46,9 @@ public interface RepairOrderRepository extends JpaRepository<RepairOrder, Long> 
                                        @Param("endTime") LocalDateTime endTime,
                                        @Param("areaId") Long areaId,
                                        @Param("equipmentType") String equipmentType);
+
+    /** 仍停在待处理且报修时间早于截止时间的超时单，按等待时长从长到短排序 */
+    @Query("SELECT ro FROM RepairOrder ro WHERE ro.status = 0 AND ro.createdAt <= :cutoff " +
+            "ORDER BY ro.createdAt ASC, ro.id ASC")
+    List<RepairOrder> findOverduePending(@Param("cutoff") LocalDateTime cutoff);
 }
