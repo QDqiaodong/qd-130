@@ -17,6 +17,10 @@ public class RepairOrderDTO {
 
     private String inspectionNo;
 
+    private Long spotCheckId;
+
+    private String spotCheckNo;
+
     private Long equipmentId;
 
     private String equipmentNo;

@@ -78,7 +78,7 @@
       <thead>
         <tr>
           <th>报修单号</th>
-          <th>巡检单号</th>
+          <th>来源单号</th>
           <th>设备编号</th>
           <th>设备名称</th>
           <th>区域</th>
@@ -93,7 +93,11 @@
       <tbody>
         <tr v-for="order in repairList" :key="order.id">
           <td>{{ order.repairNo }}</td>
-          <td>{{ order.inspectionNo || '-' }}</td>
+          <td>
+            <span v-if="order.inspectionNo">巡检 {{ order.inspectionNo }}</span>
+            <span v-else-if="order.spotCheckNo" class="spotcheck-source">抽检 {{ order.spotCheckNo }}</span>
+            <span v-else>-</span>
+          </td>
           <td>{{ order.equipmentNo }}</td>
           <td>{{ order.equipmentName }}</td>
           <td>{{ order.areaName || '-' }}</td>
@@ -165,7 +169,12 @@
             <h4>报修信息</h4>
             <div class="info-grid">
               <div class="info-item"><span class="label">报修单号:</span><span>{{ detail.repairNo }}</span></div>
-              <div class="info-item"><span class="label">巡检单号:</span><span>{{ detail.inspectionNo || '-' }}</span></div>
+              <div class="info-item">
+                <span class="label">来源单号:</span>
+                <span v-if="detail.inspectionNo">巡检 {{ detail.inspectionNo }}</span>
+                <span v-else-if="detail.spotCheckNo">抽检 {{ detail.spotCheckNo }}</span>
+                <span v-else>-</span>
+              </div>
               <div class="info-item"><span class="label">设备:</span><span>{{ detail.equipmentName }}（{{ detail.equipmentNo }}）</span></div>
               <div class="info-item"><span class="label">区域:</span><span>{{ detail.areaName || '-' }}</span></div>
               <div class="info-item">

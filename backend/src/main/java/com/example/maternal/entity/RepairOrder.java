@@ -10,7 +10,10 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "repair_order",
-        uniqueConstraints = @UniqueConstraint(name = "uk_repair_inspection", columnNames = {"inspection_id"}))
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_repair_inspection", columnNames = {"inspection_id"}),
+                @UniqueConstraint(name = "uk_repair_spotcheck", columnNames = {"spot_check_id"})
+        })
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,8 +26,13 @@ public class RepairOrder {
     @Column(name = "repair_no", nullable = false, unique = true, length = 50)
     private String repairNo;
 
-    @Column(name = "inspection_id", nullable = false)
+    /** 来源巡检记录ID（巡检异常报修时写入，温奶器抽检报修时为空） */
+    @Column(name = "inspection_id")
     private Long inspectionId;
+
+    /** 来源温奶器抽检记录ID（抽检不合格报修时写入） */
+    @Column(name = "spot_check_id")
+    private Long spotCheckId;
 
     @Column(name = "equipment_id", nullable = false)
     private Long equipmentId;

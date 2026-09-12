@@ -40,6 +40,12 @@ public class CodeGenerator {
         return String.format("IN%s%04d", timestamp, sequence);
     }
 
+    public static String generateSpotCheckNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("SC%s%04d", timestamp, sequence);
+    }
+
     public static String generateRepairNo() {
         String timestamp = LocalDateTime.now().format(FORMATTER);
         int sequence = COUNTER.incrementAndGet() % 10000;

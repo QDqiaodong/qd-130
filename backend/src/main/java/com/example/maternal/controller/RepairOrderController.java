@@ -47,9 +47,15 @@ public class RepairOrderController {
     public ApiResponse<RepairOrderDTO> createRepair(@RequestBody Map<String, Object> request) {
         Long inspectionId = request.get("inspectionId") != null
                 ? Long.valueOf(request.get("inspectionId").toString()) : null;
+        Long spotCheckId = request.get("spotCheckId") != null
+                ? Long.valueOf(request.get("spotCheckId").toString()) : null;
         String reporter = request.get("reporter") != null ? request.get("reporter").toString() : null;
-        if (inspectionId == null) {
-            return ApiResponse.error(400, "巡检记录ID不能为空");
+        if (inspectionId == null && spotCheckId == null) {
+            return ApiResponse.error(400, "来源记录ID不能为空（inspectionId 或 spotCheckId 至少传一个）");
+        }
+        if (spotCheckId != null) {
+            return ApiResponse.success("报修单创建成功",
+                    repairOrderService.createRepairOrderFromSpotCheck(spotCheckId, reporter));
         }
         return ApiResponse.success("报修单创建成功", repairOrderService.createRepairOrder(inspectionId, reporter));
     }

@@ -10,10 +10,12 @@ import com.example.maternal.entity.Area;
 import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.InspectionRecord;
 import com.example.maternal.entity.RepairOrder;
+import com.example.maternal.entity.SpotCheckRecord;
 import com.example.maternal.repository.AreaRepository;
 import com.example.maternal.repository.EquipmentRepository;
 import com.example.maternal.repository.InspectionRecordRepository;
 import com.example.maternal.repository.RepairOrderRepository;
+import com.example.maternal.repository.SpotCheckRecordRepository;
 import com.example.maternal.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,7 @@ public class RepairOrderService {
 
     private final RepairOrderRepository repairOrderRepository;
     private final InspectionRecordRepository inspectionRecordRepository;
+    private final SpotCheckRecordRepository spotCheckRecordRepository;
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
     private final AreaService areaService;
@@ -137,6 +140,41 @@ public class RepairOrderService {
         return convertToDTO(repairOrderRepository.save(order));
     }
 
+    /**
+     * 温奶器抽检不合格一键补报修：抽检结论必须为不合格，同一抽检记录/设备不得重复创建进行中的报修单。
+     */
+    @Transactional
+    public RepairOrderDTO createRepairOrderFromSpotCheck(Long spotCheckId, String reporter) {
+        SpotCheckRecord record = spotCheckRecordRepository.findById(spotCheckId)
+                .orElseThrow(() -> new RuntimeException("抽检记录不存在"));
+
+        if (Boolean.TRUE.equals(record.getQualified())) {
+            throw new RuntimeException("仅抽检结论为不合格的记录才能创建报修单");
+        }
+
+        if (repairOrderRepository.existsBySpotCheckId(spotCheckId)) {
+            throw new RuntimeException("该抽检记录已创建报修单，请勿重复提交");
+        }
+
+        if (hasActiveRepair(record.getEquipmentId())) {
+            throw new RuntimeException("该设备存在未完成的报修单，请勿重复报修");
+        }
+
+        RepairOrder order = new RepairOrder();
+        order.setRepairNo(CodeGenerator.generateRepairNo());
+        order.setSpotCheckId(spotCheckId);
+        order.setEquipmentId(record.getEquipmentId());
+        order.setAreaId(record.getAreaId());
+        order.setFaultDesc(record.getAbnormalDesc() != null && !record.getAbnormalDesc().isEmpty()
+                ? record.getAbnormalDesc()
+                : "温奶器抽检温度不合格，实测" + record.getTemperature() + "℃");
+        order.setPhotoUrl(record.getPhotoUrl());
+        order.setStatus(STATUS_PENDING);
+        order.setReporter(reporter != null && !reporter.isEmpty() ? reporter : record.getInspector());
+
+        return convertToDTO(repairOrderRepository.save(order));
+    }
+
     public List<RepairOrderDTO> getRepairs(LocalDate startDate, LocalDate endDate, Long areaId, Integer status) {
         return getRepairs(startDate, endDate, areaId, status, null);
     }
@@ -227,10 +265,18 @@ public class RepairOrderService {
 
     public List<TimelineItem> buildTimeline(RepairOrder order) {
         List<TimelineItem> timeline = new ArrayList<>();
-        inspectionRecordRepository.findById(order.getInspectionId()).ifPresent(record ->
-                timeline.add(new TimelineItem(record.getCreatedAt(), "巡检异常",
-                        "巡检单号 " + record.getInspectionNo() + "，结果：异常" +
-                                (record.getAbnormalDesc() != null ? "，" + record.getAbnormalDesc() : ""), "inspection")));
+        if (order.getInspectionId() != null) {
+            inspectionRecordRepository.findById(order.getInspectionId()).ifPresent(record ->
+                    timeline.add(new TimelineItem(record.getCreatedAt(), "巡检异常",
+                            "巡检单号 " + record.getInspectionNo() + "，结果：异常" +
+                                    (record.getAbnormalDesc() != null ? "，" + record.getAbnormalDesc() : ""), "inspection")));
+        }
+        if (order.getSpotCheckId() != null) {
+            spotCheckRecordRepository.findById(order.getSpotCheckId()).ifPresent(record ->
+                    timeline.add(new TimelineItem(record.getCreatedAt(), "温奶器抽检不合格",
+                            "抽检单号 " + record.getSpotCheckNo() + "，实测水温：" + record.getTemperature() + "℃" +
+                                    (record.getAbnormalDesc() != null ? "，" + record.getAbnormalDesc() : ""), "spotcheck")));
+        }
         timeline.add(new TimelineItem(order.getCreatedAt(), "创建报修单",
                 "报修单号 " + order.getRepairNo() + "，报修人：" + (order.getReporter() != null ? order.getReporter() : "-"), "repair"));
         if (order.getUrgeTime() != null) {
@@ -266,6 +312,7 @@ public class RepairOrderService {
         dto.setId(order.getId());
         dto.setRepairNo(order.getRepairNo());
         dto.setInspectionId(order.getInspectionId());
+        dto.setSpotCheckId(order.getSpotCheckId());
         dto.setEquipmentId(order.getEquipmentId());
         dto.setAreaId(order.getAreaId());
         dto.setFaultDesc(order.getFaultDesc());
@@ -280,8 +327,15 @@ public class RepairOrderService {
         dto.setUrgeTime(order.getUrgeTime());
         dto.setCreatedAt(order.getCreatedAt());
 
-        inspectionRecordRepository.findById(order.getInspectionId())
-                .ifPresent(record -> dto.setInspectionNo(record.getInspectionNo()));
+        if (order.getInspectionId() != null) {
+            inspectionRecordRepository.findById(order.getInspectionId())
+                    .ifPresent(record -> dto.setInspectionNo(record.getInspectionNo()));
+        }
+
+        if (order.getSpotCheckId() != null) {
+            spotCheckRecordRepository.findById(order.getSpotCheckId())
+                    .ifPresent(record -> dto.setSpotCheckNo(record.getSpotCheckNo()));
+        }
 
         equipmentRepository.findById(order.getEquipmentId())
                 .ifPresent(equipment -> {

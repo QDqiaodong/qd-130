@@ -19,7 +19,11 @@ public interface RepairOrderRepository extends JpaRepository<RepairOrder, Long> 
 
     Optional<RepairOrder> findByInspectionId(Long inspectionId);
 
+    Optional<RepairOrder> findBySpotCheckId(Long spotCheckId);
+
     boolean existsByInspectionId(Long inspectionId);
+
+    boolean existsBySpotCheckId(Long spotCheckId);
 
     boolean existsByEquipmentIdAndStatusIn(Long equipmentId, Collection<Integer> statuses);
 

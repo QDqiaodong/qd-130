@@ -63,6 +63,13 @@ export const repairApi = {
   urgeRepair: (id, data) => api.put(`/repairs/${id}/urge`, data)
 }
 
+export const spotCheckApi = {
+  getSpotChecks: (params) => api.get('/spot-checks', { params }),
+  getSpotCheckDetail: (id) => api.get(`/spot-checks/${id}`),
+  createSpotCheck: (data) => api.post('/spot-checks', data),
+  createRepair: (id, data) => api.post(`/spot-checks/${id}/repair`, data || {})
+}
+
 export const dashboardApi = {
   getHealthDashboard: (params) => api.get('/dashboard/health', { params })
 }
