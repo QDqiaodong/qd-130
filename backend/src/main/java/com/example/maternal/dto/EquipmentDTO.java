@@ -33,4 +33,10 @@ public class EquipmentDTO {
     private String initialAreaName;
 
     private Integer repairStatus;
+
+    /**
+     * 是否还能再调走：服务端按维修闸门 + 未签收在途调配闸门统一计算。
+     * 刷新后档案区域、签收状态、可否再调同口径，前端按钮据此禁用。
+     */
+    private Boolean transferable;
 }

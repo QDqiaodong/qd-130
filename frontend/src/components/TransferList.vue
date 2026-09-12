@@ -91,8 +91,11 @@
           <td>{{ record.toAreaName }}</td>
           <td>{{ formatDate(record.transferDate) }}</td>
           <td>{{ record.operator || '-' }}</td>
-          <td :class="['status', record.status === 1 ? 'active' : 'cancelled']">
-            {{ record.status === 1 ? '已完成' : '已取消' }}
+          <td>
+            <span v-if="record.status !== 1" class="status cancelled">已取消</span>
+            <span v-else :class="['status', record.signed ? 'signed' : 'unsigned']">
+              {{ record.signed ? '已签收' : '待签收' }}
+            </span>
           </td>
           <td>
             <button @click="handlePrint(record)">打印</button>
@@ -388,17 +391,22 @@ const refreshList = () => {
 }
 
 const handleCancel = async (record) => {
-  if (!confirm('确定要取消这条调配记录吗？')) return
+  const unsignedTip = record.signed
+    ? '该调配单已到货签收，取消后设备当前位置将按最近一次已签收调配重新计算。确定取消吗？'
+    : '该调配单尚未到货签收，取消后设备仍在调出地。确定取消吗？'
+  if (!confirm(unsignedTip)) return
 
   try {
     const res = await transferApi.cancelTransfer(record.id)
     if (res.data.code === 200) {
       refreshList()
     } else {
-      errorMessage.value = res.data.message || '取消调配记录失败'
+      alert('取消失败: ' + (res.data.message || '未知错误'))
     }
   } catch (error) {
-    errorMessage.value = error.response?.data?.message || '取消调配记录失败'
+    const message = error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，取消未提交，请稍后重试' : '取消调配记录失败，请稍后重试')
+    alert('取消失败: ' + message)
     console.error('取消调配记录失败:', error)
   }
 }
@@ -672,8 +680,12 @@ onMounted(async () => {
   font-weight: bold;
 }
 
-.status.active {
+.status.signed {
   color: #67c23a;
+}
+
+.status.unsigned {
+  color: #e6a23c;
 }
 
 .status.cancelled {

@@ -42,7 +42,14 @@ public interface TransferRecordRepository extends JpaRepository<TransferRecord, 
     @Query("SELECT t FROM TransferRecord t ORDER BY t.createdAt DESC, t.id DESC")
     List<TransferRecord> findAllOrdered();
 
-    Optional<TransferRecord> findFirstByEquipmentIdAndStatusOrderByCreatedAtDescIdDesc(Long equipmentId, Integer status);
+    /**
+     * 设备最近一条「有效且已到货签收」的调配单。位置口径：
+     * 设备当前位置 = 最近已签收有效单的目标区域；无则为初始区域（在途/取消均不落位置）。
+     */
+    @Query("SELECT t FROM TransferRecord t WHERE t.equipmentId = :equipmentId " +
+            "AND t.status = 1 AND t.arrivalTime IS NOT NULL " +
+            "ORDER BY t.createdAt DESC, t.id DESC")
+    Optional<TransferRecord> findFirstSignedByEquipmentIdOrderByCreatedAtDescIdDesc(@Param("equipmentId") Long equipmentId);
 
     /**
      * 设备是否存在「已发出但未到货签收」的有效调配：未签收前目标区域不能再把这台设备调走。

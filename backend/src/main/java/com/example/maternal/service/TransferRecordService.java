@@ -60,11 +60,10 @@ public class TransferRecordService {
         record.setStatus(1);
         record.setRemark(request.getRemark());
         
+        // 未到货签收前设备当前位置保持在调出地：只登记调出单，不改 equipment.currentAreaId，
+        // 避免一线按目标区域找货、取消后位置也回不去；位置在签收完成时才变更为目标区域。
         TransferRecord saved = transferRecordRepository.save(record);
-        
-        equipment.setCurrentAreaId(request.getToAreaId());
-        equipmentRepository.save(equipment);
-        
+
         return convertToDTO(saved);
     }
     
@@ -173,8 +172,15 @@ public class TransferRecordService {
         record.setReceiver(request.getReceiver().trim());
         record.setArrivalTime(request.getArrivalTime());
         record.setAppearanceIntact(request.getAppearanceIntact());
+        TransferRecord saved = transferRecordRepository.save(record);
 
-        return convertToDTO(transferRecordRepository.save(record));
+        // 签收完成才落位置：设备当前区域从调出地变更为目标区域，与签收状态同事务落库
+        Equipment equipment = equipmentRepository.findById(record.getEquipmentId())
+                .orElseThrow(() -> new RuntimeException("设备不存在"));
+        equipment.setCurrentAreaId(record.getToAreaId());
+        equipmentRepository.save(equipment);
+
+        return convertToDTO(saved);
     }
 
     /**
@@ -201,12 +207,13 @@ public class TransferRecordService {
         record.setStatus(0);
         transferRecordRepository.save(record);
 
-        // 按该设备剩余有效调配记录恢复当前位置：取最近一条有效调配的目标区域，无有效记录则恢复初始区域
+        // 取消回到调出地：按该设备剩余「已签收」有效调配重新计算当前位置，
+        // 取最近一条已签收单的目标区域；本单未签收时设备本就仍在调出地，无已签收单则恢复初始区域。
         Equipment equipment = equipmentRepository.findById(record.getEquipmentId())
                 .orElseThrow(() -> new RuntimeException("设备不存在"));
 
         Long restoredAreaId = transferRecordRepository
-                .findFirstByEquipmentIdAndStatusOrderByCreatedAtDescIdDesc(record.getEquipmentId(), 1)
+                .findFirstSignedByEquipmentIdOrderByCreatedAtDescIdDesc(record.getEquipmentId())
                 .map(TransferRecord::getToAreaId)
                 .orElse(equipment.getInitialAreaId());
         equipment.setCurrentAreaId(restoredAreaId);

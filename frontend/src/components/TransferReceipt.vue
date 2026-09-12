@@ -14,7 +14,7 @@
           <div class="summary-item"><span class="label">调配日期:</span><span>{{ record.transferDate }}</span></div>
         </div>
 
-        <p class="receipt-tip">签收完成前，该设备不能再从目标区域调出；请核对到货实物后再签收。</p>
+        <p class="receipt-tip">签收完成前，设备档案仍保留在调出地且不能再次调配；请核对到货实物后再签收，签收后位置才变更为目标区域。</p>
 
         <form @submit.prevent="handleSubmit">
           <div class="form-group">

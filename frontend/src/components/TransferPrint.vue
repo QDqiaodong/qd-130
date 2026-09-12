@@ -69,7 +69,7 @@
                 </div>
                 <div class="info-item">
                   <span class="label">状态:</span>
-                  <span class="value">{{ record.status === 1 ? '已完成' : '已取消' }}</span>
+                  <span class="value">{{ record.status === 1 ? (record.signed ? '已签收' : '待签收') : '已取消' }}</span>
                 </div>
               </div>
               <div class="info-row" v-if="record.remark">

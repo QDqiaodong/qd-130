@@ -19,7 +19,8 @@
           <span class="label">当前区域:</span>
           <span>{{ equipment.currentAreaName }}</span>
         </div>
-        
+        <p class="transfer-tip">登记后设备当前位置仍保留在调出地，目标母婴室到货签收后才变更；未签收可取消，取消后回到调出地。</p>
+
         <form @submit.prevent="handleSubmit">
           <div class="form-group">
             <label>目标区域:</label>
@@ -203,6 +204,17 @@ watch(() => props.visible, (val) => {
 .equipment-info span:last-child {
   color: #333;
   font-weight: bold;
+}
+
+.transfer-tip {
+  margin: 10px 0 4px;
+  padding: 8px 12px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 4px;
+  color: #e6a23c;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .form-group {

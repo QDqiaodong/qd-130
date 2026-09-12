@@ -18,10 +18,13 @@
           <div class="repair-badge" v-if="equipment.repairStatus !== null && equipment.repairStatus !== undefined">
             {{ equipment.repairStatus === 0 ? '待维修' : '维修中' }} · 不可调配
           </div>
+          <div class="transfer-badge" v-else-if="inTransit(equipment)">
+            待签收 · 设备仍在{{ equipment.currentAreaName || '调出地' }}，签收前不可再调
+          </div>
           <div class="equipment-buttons">
             <button @click="$emit('edit', equipment)">编辑</button>
-            <button :disabled="equipment.repairStatus !== null && equipment.repairStatus !== undefined"
-                    :title="equipment.repairStatus !== null && equipment.repairStatus !== undefined ? '设备维修中，恢复后才可调配' : ''"
+            <button :disabled="!canTransfer(equipment)"
+                    :title="transferTitle(equipment)"
                     @click="$emit('transfer', equipment)">调配</button>
           </div>
         </div>
@@ -40,6 +43,25 @@ defineProps({
 })
 
 defineEmits(['edit', 'transfer'])
+
+// 能否再调走一律以服务端口径为准（维修中或上一张调配单未签收都不可调）；
+// 旧数据缺字段时退化为只看维修状态，避免误禁用
+const inRepair = (equipment) =>
+  equipment.repairStatus !== null && equipment.repairStatus !== undefined
+
+const inTransit = (equipment) =>
+  !inRepair(equipment) && equipment.transferable === false
+
+const canTransfer = (equipment) =>
+  equipment.transferable === null || equipment.transferable === undefined
+    ? !inRepair(equipment)
+    : equipment.transferable === true
+
+const transferTitle = (equipment) => {
+  if (inRepair(equipment)) return '设备维修中，恢复后才可调配'
+  if (inTransit(equipment)) return '上一张调配单尚未到货签收，签收完成后才能再次调出'
+  return ''
+}
 </script>
 
 <style scoped>
@@ -168,6 +190,16 @@ defineEmits(['edit', 'transfer'])
   border-radius: 4px;
   background: #fdf6ec;
   color: #e6a23c;
+  font-size: 12px;
+}
+
+.transfer-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  background: #ecf5ff;
+  color: #409eff;
   font-size: 12px;
 }
 

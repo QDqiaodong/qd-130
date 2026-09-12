@@ -17,6 +17,8 @@ import { equipmentApi } from './api'
 const activeTab = ref('equipment')
 const equipmentList = ref([])
 const selectedArea = ref(null)
+const equipmentLoadError = ref('')
+const equipmentLoading = ref(false)
 const transferFormVisible = ref(false)
 const transferEquipment = ref(null)
 const equipmentFormVisible = ref(false)
@@ -32,6 +34,8 @@ const equipmentInitialAreaId = ref(null)
 const equipmentInitialType = ref('')
 
 const loadEquipments = async (areaId = null) => {
+  equipmentLoading.value = true
+  equipmentLoadError.value = ''
   try {
     let res
     if (areaId) {
@@ -45,9 +49,15 @@ const loadEquipments = async (areaId = null) => {
         list = list.filter(e => e.equipmentType === equipmentInitialType.value)
       }
       equipmentList.value = list
+    } else {
+      equipmentLoadError.value = res.data.message || '加载设备档案失败，请稍后重试'
     }
   } catch (error) {
+    equipmentLoadError.value = error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，请稍后重试' : '加载设备档案失败，请检查网络或稍后重试')
     console.error('加载设备列表失败:', error)
+  } finally {
+    equipmentLoading.value = false
   }
 }
 
@@ -139,9 +149,18 @@ onMounted(() => {
         <div class="content">
           <div class="content-header">
             <button class="add-btn" @click="handleAddEquipment">新建设备</button>
+            <button class="refresh-btn" :disabled="equipmentLoading" @click="loadEquipments(selectedArea.value?.id)">
+              {{ equipmentLoading ? '刷新中...' : '刷新档案' }}
+            </button>
             <span v-if="equipmentInitialType" class="drill-tip">
               按设备类型「{{ equipmentInitialType }}」筛选 · <a @click="equipmentInitialType = ''; loadEquipments(selectedArea.value?.id)">清除</a>
             </span>
+          </div>
+          <div v-if="equipmentLoadError" class="equipment-error-banner">
+            <span>{{ equipmentLoadError }}</span>
+            <button :disabled="equipmentLoading" @click="loadEquipments(selectedArea.value?.id)">
+              {{ equipmentLoading ? '加载中...' : '重新加载' }}
+            </button>
           </div>
           <EquipmentList :equipment-list="equipmentList" @edit="handleEdit" @transfer="handleTransfer" />
         </div>
@@ -298,6 +317,56 @@ body {
 
 .add-btn:hover {
   background: #85ce61;
+}
+
+.refresh-btn {
+  padding: 8px 20px;
+  border: 1px solid #b3d8ff;
+  border-radius: 4px;
+  background: #ecf5ff;
+  color: #409eff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #d9ecff;
+}
+
+.refresh-btn:disabled {
+  color: #a0cfff;
+  cursor: not-allowed;
+}
+
+.equipment-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: #fef0f0;
+  border: 1px solid #fbc4c4;
+  border-radius: 4px;
+  color: #f56c6c;
+  font-size: 14px;
+}
+
+.equipment-error-banner button {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #f56c6c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.equipment-error-banner button:disabled {
+  background: #fab6b6;
+  cursor: not-allowed;
 }
 
 .transfer-page {

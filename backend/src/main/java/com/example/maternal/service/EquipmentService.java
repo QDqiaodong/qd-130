@@ -6,6 +6,7 @@ import com.example.maternal.entity.Equipment;
 import com.example.maternal.repository.AreaRepository;
 import com.example.maternal.repository.EquipmentRepository;
 import com.example.maternal.repository.RepairOrderRepository;
+import com.example.maternal.repository.TransferRecordRepository;
 import com.example.maternal.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -22,6 +23,7 @@ public class EquipmentService {
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
     private final RepairOrderRepository repairOrderRepository;
+    private final TransferRecordRepository transferRecordRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     
     private static final String EQUIPMENT_TYPE_CACHE_KEY = "equipment:types";
@@ -100,6 +102,9 @@ public class EquipmentService {
         if (repairOrderRepository.existsByEquipmentIdAndStatusIn(equipmentId, List.of(0, 1))) {
             throw new RuntimeException("设备维修中，不可调配，待维修恢复后方可重新调配");
         }
+        if (transferRecordRepository.existsUnsignedByEquipmentId(equipmentId)) {
+            throw new RuntimeException("该设备上一张调配单尚未到货签收，签收完成后目标区域才能再次调出");
+        }
         return equipmentRepository.findById(equipmentId)
                 .map(equipment -> {
                     equipment.setCurrentAreaId(areaId);
@@ -135,6 +140,11 @@ public class EquipmentService {
         repairOrderRepository
                 .findFirstByEquipmentIdAndStatusInOrderByCreatedAtDescIdDesc(equipment.getId(), List.of(0, 1))
                 .ifPresent(order -> dto.setRepairStatus(order.getStatus()));
+
+        // 能否再调走与「调配登记」服务端闸门同一口径：维修中 或 上一张调配单未到货签收 均不可调
+        boolean inRepair = dto.getRepairStatus() != null;
+        dto.setTransferable(!inRepair
+                && !transferRecordRepository.existsUnsignedByEquipmentId(equipment.getId()));
 
         return dto;
     }

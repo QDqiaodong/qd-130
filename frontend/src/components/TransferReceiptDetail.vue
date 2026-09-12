@@ -19,7 +19,7 @@
           <div class="info-grid">
             <div class="info-item"><span class="label">调配单号:</span><span>{{ detail.transferNo }}</span></div>
             <div class="info-item"><span class="label">调配状态:</span>
-              <span :class="detail.status === 1 ? 'ok' : 'muted'">{{ detail.status === 1 ? '已发出' : '已取消' }}</span>
+              <span :class="detail.status === 1 ? (detail.signed ? 'ok' : 'muted') : 'muted'">{{ statusText(detail) }}</span>
             </div>
             <div class="info-item"><span class="label">设备编号:</span><span>{{ detail.equipmentNo }}</span></div>
             <div class="info-item"><span class="label">设备名称:</span><span>{{ detail.equipmentName }}</span></div>
@@ -94,6 +94,11 @@ const loadDetail = async () => {
 const formatDateTime = (value) => {
   if (!value) return '-'
   return String(value).replace('T', ' ').slice(0, 16)
+}
+
+const statusText = (detail) => {
+  if (detail.status !== 1) return '已取消'
+  return detail.signed ? '已签收' : '待签收（设备仍在调出地）'
 }
 
 const handleClose = () => {

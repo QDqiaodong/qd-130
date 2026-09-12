@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -65,15 +66,18 @@ class TransferReceiptServiceTest {
         signed.setArrivalTime(LocalDateTime.of(2026, 9, 11, 10, 0));
         signed.setAppearanceIntact(true);
 
-        when(areaRepository.findById(anyLong())).thenAnswer(inv -> Optional.of(area(inv.getArgument(0))));
-        when(equipmentRepository.findById(anyLong())).thenAnswer(inv -> Optional.of(equipment(inv.getArgument(0))));
+        lenient().when(areaRepository.findById(anyLong())).thenAnswer(inv -> Optional.of(area(inv.getArgument(0))));
+        lenient().when(equipmentRepository.findById(anyLong())).thenAnswer(inv -> Optional.of(equipment(inv.getArgument(0))));
     }
 
     @Test
-    @DisplayName("签收成功：签收人、到货时间、外观结论落库，DTO标记已签收")
+    @DisplayName("签收成功：签收人、到货时间、外观结论落库，DTO标记已签收，设备位置变更为目标区域")
     void sign_success() {
         when(transferRecordRepository.findById(1L)).thenReturn(Optional.of(unsigned));
         when(transferRecordRepository.save(any(TransferRecord.class))).thenAnswer(i -> i.getArgument(0));
+        Equipment moving = equipment(10L);
+        moving.setCurrentAreaId(4L);
+        when(equipmentRepository.findById(10L)).thenReturn(Optional.of(moving));
 
         TransferRecordDTO dto = transferRecordService.signReceipt(1L, receiptRequest(
                 "钱值班", LocalDateTime.of(2026, 9, 11, 9, 30), true));
@@ -82,6 +86,9 @@ class TransferReceiptServiceTest {
         assertThat(dto.getArrivalTime()).isEqualTo(LocalDateTime.of(2026, 9, 11, 9, 30));
         assertThat(dto.getAppearanceIntact()).isTrue();
         assertThat(dto.getSigned()).isTrue();
+        // 签收完成才落位置：调出地 4 -> 目标母婴室 5
+        assertThat(moving.getCurrentAreaId()).isEqualTo(TO_AREA);
+        verify(equipmentRepository).save(moving);
     }
 
     @Test
@@ -163,6 +170,83 @@ class TransferReceiptServiceTest {
         TransferRecordDTO dto = transferRecordService.createTransfer(request);
         assertThat(dto.getId()).isEqualTo(99L);
         assertThat(dto.getSigned()).isFalse();
+    }
+
+    @Test
+    @DisplayName("发出未签收：设备当前位置保持在调出地，不落到目标区域")
+    void create_unsignedKeepsEquipmentAtFromArea() {
+        when(repairOrderRepository.existsByEquipmentIdAndStatusIn(anyLong(), any())).thenReturn(false);
+        when(transferRecordRepository.existsUnsignedByEquipmentId(10L)).thenReturn(false);
+        when(transferRecordRepository.save(any(TransferRecord.class)))
+                .thenAnswer(i -> i.getArgument(0));
+        Equipment staying = equipment(10L);
+        staying.setCurrentAreaId(4L);
+        when(equipmentRepository.findById(10L)).thenReturn(Optional.of(staying));
+
+        TransferRequest request = new TransferRequest();
+        request.setEquipmentId(10L);
+        request.setToAreaId(TO_AREA);
+        request.setTransferDate(LocalDate.of(2026, 9, 12));
+
+        TransferRecordDTO dto = transferRecordService.createTransfer(request);
+        assertThat(dto.getFromAreaId()).isEqualTo(4L);
+        assertThat(dto.getToAreaId()).isEqualTo(TO_AREA);
+        assertThat(dto.getSigned()).isFalse();
+        assertThat(staying.getCurrentAreaId()).isEqualTo(4L);
+        // 未签收不改位置：不允许对设备档案做任何保存
+        verify(equipmentRepository, never()).save(any(Equipment.class));
+    }
+
+    @Test
+    @DisplayName("取消未签收调配单：设备回到调出地（无已签收历史时恢复初始区域）")
+    void cancel_unsignedReturnsToFromArea() {
+        when(transferRecordRepository.findById(1L)).thenReturn(Optional.of(unsigned));
+        when(transferRecordRepository.findFirstSignedByEquipmentIdOrderByCreatedAtDescIdDesc(10L))
+                .thenReturn(Optional.empty());
+        Equipment staying = equipment(10L);
+        staying.setCurrentAreaId(4L);
+        when(equipmentRepository.findById(10L)).thenReturn(Optional.of(staying));
+
+        transferRecordService.cancelTransfer(1L);
+
+        assertThat(unsigned.getStatus()).isEqualTo(0);
+        // 设备初始区域为 4（调出地），取消后位置回到调出地
+        assertThat(staying.getCurrentAreaId()).isEqualTo(4L);
+        verify(equipmentRepository).save(staying);
+    }
+
+    @Test
+    @DisplayName("取消已签收调配单：按最近一条剩余已签收单的目标区域重算位置")
+    void cancel_signedRecomputesFromLatestSigned() {
+        signed.setArrivalTime(LocalDateTime.of(2026, 9, 11, 10, 0));
+        when(transferRecordRepository.findById(2L)).thenReturn(Optional.of(signed));
+        TransferRecord earlierSigned = transfer(20L, 11L, 7L, 4L);
+        earlierSigned.setArrivalTime(LocalDateTime.of(2026, 9, 1, 10, 0));
+        when(transferRecordRepository.findFirstSignedByEquipmentIdOrderByCreatedAtDescIdDesc(11L))
+                .thenReturn(Optional.of(earlierSigned));
+        Equipment moving = equipment(11L);
+        moving.setCurrentAreaId(CHILD_AREA);
+        when(equipmentRepository.findById(11L)).thenReturn(Optional.of(moving));
+
+        transferRecordService.cancelTransfer(2L);
+
+        assertThat(signed.getStatus()).isEqualTo(0);
+        assertThat(moving.getCurrentAreaId()).isEqualTo(4L);
+        verify(equipmentRepository).save(moving);
+    }
+
+    @Test
+    @DisplayName("签收校验失败时不动设备位置")
+    void sign_missingFields_keepsEquipmentUntouched() {
+        when(transferRecordRepository.findById(1L)).thenReturn(Optional.of(unsigned));
+
+        assertThatThrownBy(() -> transferRecordService.signReceipt(1L,
+                receiptRequest("钱值班", null, true)))
+                .isInstanceOf(RuntimeException.class).hasMessageContaining("到货时间");
+
+        verify(transferRecordRepository, never()).save(any(TransferRecord.class));
+        verify(equipmentRepository, never()).findById(anyLong());
+        verify(equipmentRepository, never()).save(any(Equipment.class));
     }
 
     @Test
