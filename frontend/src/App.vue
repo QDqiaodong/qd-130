@@ -10,6 +10,7 @@ import TransferReceiptList from './components/TransferReceiptList.vue'
 import InspectionPlanList from './components/InspectionPlanList.vue'
 import InspectionList from './components/InspectionList.vue'
 import SpotCheckList from './components/SpotCheckList.vue'
+import DisinfectionList from './components/DisinfectionList.vue'
 import RepairList from './components/RepairList.vue'
 import HealthDashboard from './components/HealthDashboard.vue'
 import { equipmentApi } from './api'
@@ -133,6 +134,7 @@ onMounted(() => {
         <button :class="['nav-btn', { active: activeTab === 'plan' }]" @click="switchTab('plan')">巡检计划</button>
         <button :class="['nav-btn', { active: activeTab === 'inspection' }]" @click="switchTab('inspection')">巡检记录</button>
         <button :class="['nav-btn', { active: activeTab === 'spotcheck' }]" @click="switchTab('spotcheck')">温奶器抽检</button>
+        <button :class="['nav-btn', { active: activeTab === 'disinfection' }]" @click="switchTab('disinfection')">消毒登记</button>
         <button :class="['nav-btn', { active: activeTab === 'repair' }]" @click="switchTab('repair')">故障报修</button>
       </div>
     </header>
@@ -184,6 +186,10 @@ onMounted(() => {
 
       <div v-else-if="activeTab === 'spotcheck'" class="sub-page">
         <SpotCheckList />
+      </div>
+
+      <div v-else-if="activeTab === 'disinfection'" class="sub-page">
+        <DisinfectionList />
       </div>
 
       <div v-else class="sub-page">

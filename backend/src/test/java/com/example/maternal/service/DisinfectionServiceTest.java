@@ -1,0 +1,242 @@
+
+package com.example.maternal.service;
+
+import com.example.maternal.dto.DisinfectionRecordDTO;
+import com.example.maternal.dto.DisinfectionRecordRequest;
+import com.example.maternal.entity.Area;
+import com.example.maternal.entity.DisinfectionRecord;
+import com.example.maternal.repository.AreaRepository;
+import com.example.maternal.repository.DisinfectionRecordRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class DisinfectionServiceTest {
+
+    private static final Long AREA_A1_ID = 4L;
+    private static final LocalDate TODAY = LocalDate.of(2026, 9, 12);
+
+    @Mock
+    private DisinfectionRecordRepository disinfectionRecordRepository;
+    @Mock
+    private AreaRepository areaRepository;
+    @Mock
+    private AreaService areaService;
+
+    @InjectMocks
+    private DisinfectionService disinfectionService;
+
+    private Area room;
+
+    @BeforeEach
+    void setUp() {
+        room = new Area();
+        room.setId(AREA_A1_ID);
+        room.setName("A1母婴室");
+        room.setStatus(1);
+        when(areaRepository.findById(AREA_A1_ID)).thenReturn(Optional.of(room));
+    }
+
+    private DisinfectionRecordRequest baseRequest() {
+        DisinfectionRecordRequest request = new DisinfectionRecordRequest();
+        request.setAreaId(AREA_A1_ID);
+        request.setDisinfectDate(TODAY);
+        request.setOperator("赵值班");
+        request.setFinishTime(LocalDateTime.of(2026, 9, 12, 9, 30));
+        request.setDisinfectant("84消毒液（1:100）");
+        request.setVentilationDone(true);
+        return request;
+    }
+
+    private DisinfectionRecord savedRecord(DisinfectionRecordRequest request, boolean closedLoop) {
+        DisinfectionRecord record = new DisinfectionRecord();
+        record.setId(1L);
+        record.setDisinfectionNo("DS202609120001");
+        record.setAreaId(request.getAreaId());
+        record.setDisinfectDate(request.getDisinfectDate());
+        record.setOperator(request.getOperator());
+        record.setFinishTime(request.getFinishTime());
+        record.setDisinfectant(request.getDisinfectant());
+        record.setVentilationDone(request.getVentilationDone());
+        record.setClosedLoop(closedLoop);
+        record.setIncompleteReason(request.getIncompleteReason());
+        return record;
+    }
+
+    @Test
+    @DisplayName("通风做完登记成功，闭环标记落库为已闭环，当日不可再登记")
+    void createDisinfection_ventilationDone_closedLoop() {
+        DisinfectionRecordRequest request = baseRequest();
+        when(disinfectionRecordRepository.save(any(DisinfectionRecord.class)))
+                .thenAnswer(invocation -> savedRecord(request, true));
+        when(disinfectionRecordRepository.existsByAreaIdAndDisinfectDateAndClosedLoopTrue(AREA_A1_ID, TODAY))
+                .thenReturn(false, true);
+
+        DisinfectionRecordDTO dto = disinfectionService.createDisinfection(request);
+
+        ArgumentCaptor<DisinfectionRecord> captor = ArgumentCaptor.forClass(DisinfectionRecord.class);
+        verify(disinfectionRecordRepository).save(captor.capture());
+        DisinfectionRecord saved = captor.getValue();
+        assertThat(saved.getClosedLoop()).isTrue();
+        assertThat(saved.getIncompleteReason()).isNull();
+        assertThat(dto.getClosedLoop()).isTrue();
+        assertThat(dto.getCanRegisterAgain()).isFalse();
+    }
+
+    @Test
+    @DisplayName("通风未做完不算当日闭环，未完成原因落库，当日可再登记")
+    void createDisinfection_ventilationNotDone_notClosedLoop() {
+        DisinfectionRecordRequest request = baseRequest();
+        request.setVentilationDone(false);
+        request.setIncompleteReason("排风扇故障未能通风");
+        when(disinfectionRecordRepository.save(any(DisinfectionRecord.class)))
+                .thenAnswer(invocation -> savedRecord(request, false));
+        when(disinfectionRecordRepository.existsByAreaIdAndDisinfectDateAndClosedLoopTrue(AREA_A1_ID, TODAY))
+                .thenReturn(false);
+
+        DisinfectionRecordDTO dto = disinfectionService.createDisinfection(request);
+
+        ArgumentCaptor<DisinfectionRecord> captor = ArgumentCaptor.forClass(DisinfectionRecord.class);
+        verify(disinfectionRecordRepository).save(captor.capture());
+        assertThat(captor.getValue().getClosedLoop()).isFalse();
+        assertThat(captor.getValue().getIncompleteReason()).isEqualTo("排风扇故障未能通风");
+        assertThat(dto.getClosedLoop()).isFalse();
+        assertThat(dto.getCanRegisterAgain()).isTrue();
+    }
+
+    @Test
+    @DisplayName("通风未做完且漏填未完成原因时拒绝登记")
+    void createDisinfection_ventilationNotDoneWithoutReason_rejected() {
+        DisinfectionRecordRequest request = baseRequest();
+        request.setVentilationDone(false);
+        request.setIncompleteReason("  ");
+
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("未完成原因");
+        verify(disinfectionRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("漏填消毒人/完成时间/消毒液/通风结论时给出明确提示，不保存记录")
+    void createDisinfection_missingFields_rejected() {
+        DisinfectionRecordRequest noOperator = baseRequest();
+        noOperator.setOperator("  ");
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(noOperator))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("消毒人不能为空");
+
+        DisinfectionRecordRequest noFinishTime = baseRequest();
+        noFinishTime.setFinishTime(null);
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(noFinishTime))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("完成时间不能为空");
+
+        DisinfectionRecordRequest noDisinfectant = baseRequest();
+        noDisinfectant.setDisinfectant(null);
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(noDisinfectant))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("消毒液不能为空");
+
+        DisinfectionRecordRequest noVentilation = baseRequest();
+        noVentilation.setVentilationDone(null);
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(noVentilation))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("通风是否做完");
+
+        DisinfectionRecordRequest noDate = baseRequest();
+        noDate.setDisinfectDate(null);
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(noDate))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("消毒日期不能为空");
+
+        verify(disinfectionRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("同一母婴室当天已闭环后再次登记被拒绝，提示不能重复闭环")
+    void createDisinfection_duplicateClosedLoop_rejected() {
+        when(disinfectionRecordRepository.existsByAreaIdAndDisinfectDateAndClosedLoopTrue(AREA_A1_ID, TODAY))
+                .thenReturn(true);
+
+        DisinfectionRecordRequest request = baseRequest();
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("不能重复闭环");
+
+        verify(disinfectionRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("母婴室区域不存在或已停用时拒绝登记")
+    void createDisinfection_areaMissingOrDisabled_rejected() {
+        DisinfectionRecordRequest request = baseRequest();
+        request.setAreaId(999L);
+        when(areaRepository.findById(999L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("母婴室区域不存在");
+
+        room.setStatus(0);
+        DisinfectionRecordRequest disabled = baseRequest();
+        assertThatThrownBy(() -> disinfectionService.createDisinfection(disabled))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("已停用");
+
+        verify(disinfectionRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("列表按区域范围过滤，能否再登记按当日闭环记录同源计算")
+    void getDisinfections_scopeAndCanRegisterAgain() {
+        DisinfectionRecordRequest request = baseRequest();
+        DisinfectionRecord closed = savedRecord(request, true);
+        closed.setId(1L);
+
+        DisinfectionRecordRequest otherDay = baseRequest();
+        otherDay.setDisinfectDate(TODAY.minusDays(1));
+        otherDay.setVentilationDone(false);
+        otherDay.setIncompleteReason("排风扇故障");
+        DisinfectionRecord open = savedRecord(otherDay, false);
+        open.setId(2L);
+
+        when(areaService.resolveScopeAreaIds(AREA_A1_ID)).thenReturn(Set.of(AREA_A1_ID));
+        when(disinfectionRecordRepository.findByFilter(isNull(), isNull(), anyLong(), isNull()))
+                .thenReturn(List.of(closed, open));
+        when(disinfectionRecordRepository.findByFilter(isNull(), isNull(), isNull(), anyBoolean()))
+                .thenReturn(List.of(closed));
+
+        List<DisinfectionRecordDTO> result = disinfectionService.getDisinfections(null, null, AREA_A1_ID, null);
+
+        assertThat(result).hasSize(2);
+        DisinfectionRecordDTO closedDto = result.get(0);
+        DisinfectionRecordDTO openDto = result.get(1);
+        assertThat(closedDto.getClosedLoop()).isTrue();
+        assertThat(closedDto.getCanRegisterAgain()).isFalse();
+        assertThat(openDto.getClosedLoop()).isFalse();
+        assertThat(openDto.getIncompleteReason()).isEqualTo("排风扇故障");
+        assertThat(openDto.getCanRegisterAgain()).isTrue();
+    }
+}

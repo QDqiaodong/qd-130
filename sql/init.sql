@@ -6,6 +6,7 @@ USE maternal_db;
 
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS spot_check_record;
+DROP TABLE IF EXISTS disinfection_record;
 DROP TABLE IF EXISTS inspection_record;
 DROP TABLE IF EXISTS inspection_plan;
 DROP TABLE IF EXISTS transfer_record;
@@ -139,6 +140,28 @@ CREATE TABLE spot_check_record (
     INDEX idx_qualified (qualified)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='温奶器温度抽检记录表';
 
+CREATE TABLE disinfection_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '消毒登记ID',
+    disinfection_no VARCHAR(50) UNIQUE NOT NULL COMMENT '消毒登记单号',
+    area_id BIGINT NOT NULL COMMENT '母婴室区域ID',
+    disinfect_date DATE NOT NULL COMMENT '消毒日期',
+    operator VARCHAR(50) NOT NULL COMMENT '消毒人（值班人员）',
+    finish_time DATETIME NOT NULL COMMENT '消毒完成时间',
+    disinfectant VARCHAR(100) NOT NULL COMMENT '使用的消毒液',
+    ventilation_done TINYINT(1) NOT NULL COMMENT '通风是否做完：0-未做完，1-已做完',
+    closed_loop TINYINT(1) NOT NULL COMMENT '当日是否闭环：0-未闭环，1-已闭环（仅通风做完算闭环，服务端落库）',
+    incomplete_reason VARCHAR(500) COMMENT '未完成原因（通风未做完必填）',
+    remark VARCHAR(500) COMMENT '备注',
+    closed_token VARCHAR(80) GENERATED ALWAYS AS (IF(closed_loop = 1, CONCAT(area_id, '_', disinfect_date), NULL)) STORED COMMENT '闭环唯一令牌（同一母婴室每天仅允许一条闭环）',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_disinfection_closed_token (closed_token),
+    INDEX idx_disinfection_no (disinfection_no),
+    INDEX idx_area_id (area_id),
+    INDEX idx_disinfect_date (disinfect_date),
+    INDEX idx_closed_loop (closed_loop)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室消毒登记表';
+
 CREATE TABLE repair_order (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '报修单ID',
     repair_no VARCHAR(50) UNIQUE NOT NULL COMMENT '报修单号',
@@ -209,3 +232,9 @@ INSERT INTO spot_check_record (spot_check_no, equipment_id, area_id, check_date,
 
 INSERT INTO repair_order (repair_no, spot_check_id, equipment_id, area_id, fault_desc, photo_url, status, reporter, repairman, start_time, finish_time, repair_note) VALUES
 ('RP202609100001', 2, 5, 6, '抽检温度55.20℃，不在合格区间40.00~50.00℃；水温偏高，疑似温控失灵', 'https://example.com/photos/eq005-hot.jpg', 0, '赵值班', NULL, NULL, NULL, NULL);
+
+INSERT INTO disinfection_record (disinfection_no, area_id, disinfect_date, operator, finish_time, disinfectant, ventilation_done, closed_loop, incomplete_reason, remark) VALUES
+('DS202609110001', 4, '2026-09-11', '赵值班', '2026-09-11 09:30:00', '84消毒液（1:100）', 1, 1, NULL, '开店前完成消毒并通风30分钟'),
+('DS202609110002', 5, '2026-09-11', '赵值班', '2026-09-11 09:50:00', '84消毒液（1:100）', 0, 0, '排风扇故障未能通风，已报物业检修', '通风恢复后需补登记闭环'),
+('DS202609110003', 6, '2026-09-11', '钱值班', '2026-09-11 10:10:00', '季铵盐消毒液', 1, 1, NULL, NULL),
+('DS202609110004', 5, '2026-09-11', '钱值班', '2026-09-11 16:40:00', '84消毒液（1:100）', 1, 1, NULL, '排风扇修复后补做通风，当日闭环');

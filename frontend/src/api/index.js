@@ -77,4 +77,9 @@ export const dashboardApi = {
   getHealthDashboard: (params) => api.get('/dashboard/health', { params })
 }
 
+export const disinfectionApi = {
+  getDisinfections: (params) => api.get('/disinfections', { params }),
+  createDisinfection: (data) => api.post('/disinfections', data)
+}
+
 export default api
