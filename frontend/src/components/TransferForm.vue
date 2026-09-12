@@ -109,10 +109,13 @@ const handleSubmit = async () => {
     if (res.data.code === 200) {
       emit('success')
       handleClose()
+    } else {
+      alert('提交失败: ' + (res.data.message || '未知错误'))
     }
   } catch (error) {
     console.error('提交调配记录失败:', error)
-    alert('提交失败: ' + (error.response?.data?.message || '未知错误'))
+    alert('提交失败: ' + (error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，请稍后重试' : '未知错误')))
   }
 }
 

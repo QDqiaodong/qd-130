@@ -4,6 +4,7 @@ package com.example.maternal.dto;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 public class TransferRecordDTO {
@@ -33,6 +34,18 @@ public class TransferRecordDTO {
     private String operator;
     
     private Integer status;
-    
+
     private String remark;
+
+    /** 到货签收人（值班人员） */
+    private String receiver;
+
+    /** 到货签收时间 */
+    private LocalDateTime arrivalTime;
+
+    /** 到货外观是否完好 */
+    private Boolean appearanceIntact;
+
+    /** 是否已到货签收：由服务端按签收字段统一计算，列表、详情与调出闸门同口径 */
+    private Boolean signed;
 }

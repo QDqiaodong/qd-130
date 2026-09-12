@@ -46,7 +46,19 @@ public class TransferRecord {
     
     @Column(name = "remark", length = 500)
     private String remark;
-    
+
+    /** 到货签收人（值班人员），未签收时为空 */
+    @Column(name = "receiver", length = 50)
+    private String receiver;
+
+    /** 到货签收时间 */
+    @Column(name = "arrival_time")
+    private LocalDateTime arrivalTime;
+
+    /** 到货外观是否完好：true-完好，false-有破损，未签收时为空 */
+    @Column(name = "appearance_intact")
+    private Boolean appearanceIntact;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     

@@ -6,6 +6,7 @@ import EquipmentList from './components/EquipmentList.vue'
 import EquipmentForm from './components/EquipmentForm.vue'
 import TransferForm from './components/TransferForm.vue'
 import TransferList from './components/TransferList.vue'
+import TransferReceiptList from './components/TransferReceiptList.vue'
 import InspectionPlanList from './components/InspectionPlanList.vue'
 import InspectionList from './components/InspectionList.vue'
 import SpotCheckList from './components/SpotCheckList.vue'
@@ -118,6 +119,7 @@ onMounted(() => {
         <button :class="['nav-btn', { active: activeTab === 'dashboard' }]" @click="switchTab('dashboard')">健康看板</button>
         <button :class="['nav-btn', { active: activeTab === 'equipment' }]" @click="switchTab('equipment')">设备管理</button>
         <button :class="['nav-btn', { active: activeTab === 'transfer' }]" @click="switchTab('transfer')">调配台账</button>
+        <button :class="['nav-btn', { active: activeTab === 'receipt' }]" @click="switchTab('receipt')">到货签收</button>
         <button :class="['nav-btn', { active: activeTab === 'plan' }]" @click="switchTab('plan')">巡检计划</button>
         <button :class="['nav-btn', { active: activeTab === 'inspection' }]" @click="switchTab('inspection')">巡检记录</button>
         <button :class="['nav-btn', { active: activeTab === 'spotcheck' }]" @click="switchTab('spotcheck')">温奶器抽检</button>
@@ -147,6 +149,10 @@ onMounted(() => {
 
       <div v-else-if="activeTab === 'transfer'" class="transfer-page">
         <TransferList :key="`transfer-${drillFilters.transfer.key}`" :initial-filters="drillFilters.transfer.value" @back-dashboard="switchTab('dashboard')" />
+      </div>
+
+      <div v-else-if="activeTab === 'receipt'" class="sub-page">
+        <TransferReceiptList />
       </div>
 
       <div v-else-if="activeTab === 'plan'" class="sub-page">

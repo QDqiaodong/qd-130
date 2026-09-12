@@ -37,7 +37,9 @@ export const transferApi = {
   getTransferSummary: (startDate, endDate, extraParams = {}) =>
     api.get('/transfers/summary', { params: { startDate, endDate, ...extraParams } }),
   createTransfer: (data) => api.post('/transfers', data),
-  cancelTransfer: (id) => api.put(`/transfers/${id}/cancel`)
+  cancelTransfer: (id) => api.put(`/transfers/${id}/cancel`),
+  getTransferReceipts: (params) => api.get('/transfers/receipts', { params }),
+  signTransferReceipt: (id, data) => api.post(`/transfers/${id}/receipt`, data)
 }
 
 export const inspectionPlanApi = {

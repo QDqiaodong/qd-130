@@ -3,6 +3,7 @@ package com.example.maternal.controller;
 
 import com.example.maternal.dto.ApiResponse;
 import com.example.maternal.dto.TransferRecordDTO;
+import com.example.maternal.dto.TransferReceiptRequest;
 import com.example.maternal.dto.TransferRequest;
 import com.example.maternal.dto.TransferSummaryDTO;
 import com.example.maternal.service.TransferRecordService;
@@ -72,5 +73,22 @@ public class TransferRecordController {
     public ApiResponse<Void> cancelTransfer(@PathVariable Long id) {
         transferRecordService.cancelTransfer(id);
         return ApiResponse.success("调配已取消", null);
+    }
+
+    /**
+     * 到货签收台账：按调配日区间（均可空）和目标区域（含下级）查询已发出的调配单。
+     */
+    @GetMapping("/receipts")
+    public ApiResponse<List<TransferRecordDTO>> getReceipts(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long toAreaId) {
+        return ApiResponse.success(transferRecordService.getReceipts(startDate, endDate, toAreaId));
+    }
+
+    @PostMapping("/{id}/receipt")
+    public ApiResponse<TransferRecordDTO> signReceipt(@PathVariable Long id,
+                                                      @RequestBody TransferReceiptRequest request) {
+        return ApiResponse.success("到货签收成功", transferRecordService.signReceipt(id, request));
     }
 }

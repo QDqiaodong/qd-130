@@ -2,6 +2,7 @@
 package com.example.maternal.service;
 
 import com.example.maternal.dto.TransferRecordDTO;
+import com.example.maternal.dto.TransferReceiptRequest;
 import com.example.maternal.dto.TransferRequest;
 import com.example.maternal.dto.TransferSummaryDTO;
 import com.example.maternal.entity.Area;
@@ -38,6 +39,11 @@ public class TransferRecordService {
 
         if (repairOrderRepository.existsByEquipmentIdAndStatusIn(request.getEquipmentId(), List.of(0, 1))) {
             throw new RuntimeException("设备维修中，不可调配，待维修恢复后方可重新调配");
+        }
+
+        // 到货签收闸门：上一张调配单未签收前，该设备不能再被调出（口径以服务端落库为准）
+        if (transferRecordRepository.existsUnsignedByEquipmentId(request.getEquipmentId())) {
+            throw new RuntimeException("该设备上一张调配单尚未到货签收，签收完成后目标区域才能再次调出");
         }
 
         Area toArea = areaRepository.findById(request.getToAreaId())
@@ -136,6 +142,53 @@ public class TransferRecordService {
         return summary;
     }
     
+    /**
+     * 到货签收：仅已发出（status=1）且尚未签收的调配单可签收。
+     * 签收人、到货时间、外观是否完好缺一不可；签收后不可重复签收。
+     */
+    @Transactional
+    public TransferRecordDTO signReceipt(Long id, TransferReceiptRequest request) {
+        TransferRecord record = transferRecordRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("调配记录不存在"));
+
+        if (record.getStatus() == null || record.getStatus() != 1) {
+            throw new RuntimeException("该调配记录已取消，不能签收");
+        }
+        if (record.getArrivalTime() != null) {
+            throw new RuntimeException("该调配单已完成到货签收，请勿重复签收");
+        }
+        if (request == null || request.getReceiver() == null || request.getReceiver().trim().isEmpty()) {
+            throw new RuntimeException("签收人不能为空");
+        }
+        if (request.getArrivalTime() == null) {
+            throw new RuntimeException("到货时间不能为空");
+        }
+        if (request.getAppearanceIntact() == null) {
+            throw new RuntimeException("请选择外观是否完好");
+        }
+        if (request.getArrivalTime().toLocalDate().isBefore(record.getTransferDate())) {
+            throw new RuntimeException("到货时间不能早于调配日期");
+        }
+
+        record.setReceiver(request.getReceiver().trim());
+        record.setArrivalTime(request.getArrivalTime());
+        record.setAppearanceIntact(request.getAppearanceIntact());
+
+        return convertToDTO(transferRecordRepository.save(record));
+    }
+
+    /**
+     * 到货签收台账：可按调配日区间和目标区域筛选（选父区域含全部下级）。
+     * 签收标记随 DTO 一并返回，刷新后与「还能不能调出」保持同一口径。
+     */
+    public List<TransferRecordDTO> getReceipts(LocalDate startDate, LocalDate endDate, Long toAreaId) {
+        java.util.Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(toAreaId);
+        return transferRecordRepository.findActiveForReceipt(startDate, endDate).stream()
+                .filter(t -> scopeAreaIds == null || scopeAreaIds.contains(t.getToAreaId()))
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public void cancelTransfer(Long id) {
         TransferRecord record = transferRecordRepository.findById(id)
@@ -172,6 +225,11 @@ public class TransferRecordService {
         dto.setOperator(record.getOperator());
         dto.setStatus(record.getStatus());
         dto.setRemark(record.getRemark());
+        dto.setReceiver(record.getReceiver());
+        dto.setArrivalTime(record.getArrivalTime());
+        dto.setAppearanceIntact(record.getAppearanceIntact());
+        // 签收标记服务端统一计算：有到货签收时间即视为已签收，列表/详情/调出闸门共用此口径
+        dto.setSigned(record.getArrivalTime() != null);
         
         equipmentRepository.findById(record.getEquipmentId())
                 .ifPresent(e -> {

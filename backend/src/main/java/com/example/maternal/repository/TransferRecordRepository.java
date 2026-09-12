@@ -43,4 +43,21 @@ public interface TransferRecordRepository extends JpaRepository<TransferRecord, 
     List<TransferRecord> findAllOrdered();
 
     Optional<TransferRecord> findFirstByEquipmentIdAndStatusOrderByCreatedAtDescIdDesc(Long equipmentId, Integer status);
+
+    /**
+     * 设备是否存在「已发出但未到货签收」的有效调配：未签收前目标区域不能再把这台设备调走。
+     */
+    @Query("SELECT COUNT(t) > 0 FROM TransferRecord t " +
+            "WHERE t.equipmentId = :equipmentId AND t.status = 1 AND t.arrivalTime IS NULL")
+    boolean existsUnsignedByEquipmentId(@Param("equipmentId") Long equipmentId);
+
+    /**
+     * 到货签收台账：仅有效（status=1）调配，支持按调配日区间过滤，按调配日倒序、id倒序。
+     */
+    @Query("SELECT t FROM TransferRecord t WHERE t.status = 1 " +
+            "AND (:startDate IS NULL OR t.transferDate >= :startDate) " +
+            "AND (:endDate IS NULL OR t.transferDate <= :endDate) " +
+            "ORDER BY t.transferDate DESC, t.id DESC")
+    List<TransferRecord> findActiveForReceipt(@Param("startDate") LocalDate startDate,
+                                              @Param("endDate") LocalDate endDate);
 }

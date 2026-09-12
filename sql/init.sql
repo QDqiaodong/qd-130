@@ -58,6 +58,9 @@ CREATE TABLE transfer_record (
     operator VARCHAR(50) COMMENT '操作人',
     status TINYINT DEFAULT 1 COMMENT '状态：0-取消，1-已完成',
     remark VARCHAR(500) COMMENT '备注',
+    receiver VARCHAR(50) COMMENT '到货签收人（值班）',
+    arrival_time DATETIME COMMENT '到货签收时间',
+    appearance_intact TINYINT(1) COMMENT '到货外观是否完好：0-有破损，1-完好',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_transfer_no (transfer_no),
@@ -65,7 +68,8 @@ CREATE TABLE transfer_record (
     INDEX idx_from_area_id (from_area_id),
     INDEX idx_to_area_id (to_area_id),
     INDEX idx_transfer_date (transfer_date),
-    INDEX idx_from_to_area (from_area_id, to_area_id)
+    INDEX idx_from_to_area (from_area_id, to_area_id),
+    INDEX idx_arrival_time (arrival_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='跨区域调配记录表';
 
 CREATE TABLE inspection_plan (
