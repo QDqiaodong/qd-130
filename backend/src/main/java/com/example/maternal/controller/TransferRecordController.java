@@ -56,8 +56,11 @@ public class TransferRecordController {
     @GetMapping("/summary")
     public ApiResponse<TransferSummaryDTO> getTransferSummary(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return ApiResponse.success(transferRecordService.getTransferSummary(startDate, endDate));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long areaId,
+            @RequestParam(required = false) String equipmentType) {
+        return ApiResponse.success(transferRecordService
+                .getTransferSummary(startDate, endDate, areaId, equipmentType));
     }
     
     @PostMapping

@@ -74,12 +74,23 @@ public class TransferRecordService {
 
     public List<TransferRecordDTO> getTransfersByDateRange(LocalDate startDate, LocalDate endDate,
                                                            Long areaId, String equipmentType) {
+        return findScopedTransfers(startDate, endDate, areaId, equipmentType).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 与健康看板「调配次数」同一口径取数：周期内有效（status=1）调配，
+     * 区域维度同时计入「调出本区域」和「调入本区域」，选中父区域时含全部下级区域。
+     * 明细列表与汇总条数共用本方法，保证卡片数字 = 汇总 = 明细条数。
+     */
+    private List<TransferRecord> findScopedTransfers(LocalDate startDate, LocalDate endDate,
+                                                     Long areaId, String equipmentType) {
         java.util.Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
         return transferRecordRepository.findForDashboard(startDate, endDate, null, equipmentType).stream()
                 .filter(t -> scopeAreaIds == null
                         || scopeAreaIds.contains(t.getFromAreaId())
                         || scopeAreaIds.contains(t.getToAreaId()))
-                .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
     
@@ -98,10 +109,30 @@ public class TransferRecordService {
     }
     
     public TransferSummaryDTO getTransferSummary(LocalDate startDate, LocalDate endDate) {
-        Long count = transferRecordRepository.countByDateRange(startDate, endDate);
+        return getTransferSummary(startDate, endDate, null, null);
+    }
+
+    /**
+     * 汇总与明细共用 {@link #findScopedTransfers}，区域维度同时统计调出与调入，
+     * 保证健康看板卡片数字、汇总总量、明细条数完全一致。
+     */
+    public TransferSummaryDTO getTransferSummary(LocalDate startDate, LocalDate endDate,
+                                                 Long areaId, String equipmentType) {
+        List<TransferRecord> scoped = findScopedTransfers(startDate, endDate, areaId, equipmentType);
+        java.util.Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
+        long outbound = scoped.stream()
+                .filter(t -> scopeAreaIds == null || scopeAreaIds.contains(t.getFromAreaId()))
+                .count();
+        long inbound = scoped.stream()
+                .filter(t -> scopeAreaIds == null || scopeAreaIds.contains(t.getToAreaId()))
+                .count();
+
         TransferSummaryDTO summary = new TransferSummaryDTO();
-        summary.setTotalCount(count);
-        summary.setPeriod(startDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + " 至 " + endDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+        summary.setTotalCount((long) scoped.size());
+        summary.setOutboundCount(outbound);
+        summary.setInboundCount(inbound);
+        summary.setPeriod(startDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                + " 至 " + endDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
         return summary;
     }
     

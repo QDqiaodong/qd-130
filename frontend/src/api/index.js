@@ -34,8 +34,8 @@ export const transferApi = {
     api.get('/transfers/filter', { params: { startDate, endDate, ...extraParams } }),
   getTransferById: (id) => api.get(`/transfers/${id}`),
   getTransferByNo: (no) => api.get(`/transfers/byNo/${no}`),
-  getTransferSummary: (startDate, endDate) =>
-    api.get(`/transfers/summary?startDate=${startDate}&endDate=${endDate}`),
+  getTransferSummary: (startDate, endDate, extraParams = {}) =>
+    api.get('/transfers/summary', { params: { startDate, endDate, ...extraParams } }),
   createTransfer: (data) => api.post('/transfers', data),
   cancelTransfer: (id) => api.put(`/transfers/${id}/cancel`)
 }
