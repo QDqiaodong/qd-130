@@ -7,6 +7,7 @@ USE maternal_db;
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS spot_check_record;
 DROP TABLE IF EXISTS disinfection_record;
+DROP TABLE IF EXISTS supply_handover;
 DROP TABLE IF EXISTS room_opening_record;
 DROP TABLE IF EXISTS inspection_record;
 DROP TABLE IF EXISTS inspection_plan;
@@ -164,6 +165,26 @@ CREATE TABLE disinfection_record (
     INDEX idx_closed_loop (closed_loop)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室消毒登记表';
 
+CREATE TABLE supply_handover (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '交接单ID',
+    handover_no VARCHAR(50) UNIQUE NOT NULL COMMENT '交接单号',
+    area_id BIGINT NOT NULL COMMENT '母婴室区域ID',
+    handover_date DATE NOT NULL COMMENT '交班日期',
+    handover_person VARCHAR(50) NOT NULL COMMENT '交班人（值班人员）',
+    receiver VARCHAR(50) NOT NULL COMMENT '接班人',
+    wipes_count INT NOT NULL COMMENT '湿巾盘点件数',
+    diaper_count INT NOT NULL COMMENT '纸尿裤盘点件数',
+    handed_over TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已交接：0-未交接，1-已交接（接班人确认后落库）',
+    handover_time DATETIME DEFAULT NULL COMMENT '交接确认时间',
+    remark VARCHAR(500) COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_handover_no (handover_no),
+    INDEX idx_area_id (area_id),
+    INDEX idx_handover_date (handover_date),
+    INDEX idx_handed_over (handed_over)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室值班交接用品盘点表';
+
 CREATE TABLE room_opening_record (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '开放登记ID',
     record_no VARCHAR(50) UNIQUE NOT NULL COMMENT '开放登记单号',
@@ -261,6 +282,12 @@ INSERT INTO disinfection_record (disinfection_no, area_id, disinfect_date, opera
 ('DS202609110002', 5, '2026-09-11', '赵值班', '2026-09-11 09:50:00', '84消毒液（1:100）', 0, 0, '排风扇故障未能通风，已报物业检修', '通风恢复后需补登记闭环'),
 ('DS202609110003', 6, '2026-09-11', '钱值班', '2026-09-11 10:10:00', '季铵盐消毒液', 1, 1, NULL, NULL),
 ('DS202609110004', 5, '2026-09-11', '钱值班', '2026-09-11 16:40:00', '84消毒液（1:100）', 1, 1, NULL, '排风扇修复后补做通风，当日闭环');
+
+INSERT INTO supply_handover (handover_no, area_id, handover_date, handover_person, receiver, wipes_count, diaper_count, handed_over, handover_time, remark) VALUES
+('SH202609130001', 4, '2026-09-13', '赵值班', '钱值班', 12, 30, 1, '2026-09-13 08:05:00', '早班交接，件数双方核对无误'),
+('SH202609130002', 5, '2026-09-13', '赵值班', '钱值班', 8, 22, 1, '2026-09-13 08:10:00', '湿巾余量偏少，已通知补货'),
+('SH202609130003', 6, '2026-09-13', '钱值班', '孙值班', 15, 40, 0, NULL, NULL),
+('SH202609120001', 7, '2026-09-12', '孙值班', '赵值班', 10, 25, 1, '2026-09-12 21:05:00', '晚班交接');
 
 INSERT INTO room_opening_record (record_no, area_id, open_date, open_time, close_time, temporarily_closed, close_reason, remark) VALUES
 ('OP202609130001', 4, '2026-09-13', '2026-09-13 08:00:00', '2026-09-13 22:00:00', 0, NULL, '正常开放'),

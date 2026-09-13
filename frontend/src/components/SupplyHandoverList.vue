@@ -1,0 +1,498 @@
+<template>
+  <div class="handover-list">
+    <div class="list-header">
+      <h3>值班交接（用品盘点）</h3>
+      <button class="add-btn" @click="openCreateForm">登记交班</button>
+    </div>
+
+    <div class="range-tip">交班前须盘清每个母婴室的湿巾和纸尿裤件数；登记后为「未交接」，接班人确认交接后才算交出班</div>
+
+    <div class="filter-section">
+      <div class="filter-row">
+        <label class="filter-label">母婴室</label>
+        <select v-model="filters.areaId" :disabled="areasLoading">
+          <option value="">{{ areasLoading ? '母婴室加载中...' : '全部在用母婴室' }}</option>
+          <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
+        </select>
+
+        <label class="filter-label">是否已交接</label>
+        <select v-model="filters.handedOver">
+          <option value="">全部交接状态</option>
+          <option value="true">已交接</option>
+          <option value="false">未交接</option>
+        </select>
+
+        <button class="btn-filter" @click="applyFilters">筛选</button>
+        <button class="btn-reset" @click="handleReset">重置</button>
+      </div>
+      <p v-if="filterError" class="filter-error">{{ filterError }}</p>
+      <p v-if="areaError" class="filter-error">
+        {{ areaError }}
+        <button class="inline-retry" type="button" :disabled="areasLoading" @click="loadAreas">
+          {{ areasLoading ? '重试中...' : '重试' }}
+        </button>
+      </p>
+    </div>
+
+    <div v-if="loadError" class="load-banner error">
+      <span>{{ loadError }}</span>
+      <button class="btn-retry" :disabled="loading" @click="loadHandovers">
+        {{ loading ? '加载中...' : '重试' }}
+      </button>
+    </div>
+
+    <div v-if="!loadError && !loading && handoverList.length === 0" class="empty-banner">
+      <span>当前筛选条件下暂无交接单</span>
+      <button type="button" class="empty-reset" @click="handleReset">清空筛选条件</button>
+    </div>
+
+    <table class="handover-table" v-if="handoverList.length > 0">
+      <thead>
+        <tr>
+          <th>交接单号</th>
+          <th>母婴室</th>
+          <th>交班日期</th>
+          <th>交班人</th>
+          <th>接班人</th>
+          <th>湿巾件数</th>
+          <th>纸尿裤件数</th>
+          <th>是否已交接</th>
+          <th>交接时间</th>
+          <th>备注</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="record in handoverList" :key="record.id"
+            :class="{ 'row-pending': record.handedOver === false }">
+          <td>{{ record.handoverNo }}</td>
+          <td>{{ record.areaName || '-' }}</td>
+          <td>{{ record.handoverDate }}</td>
+          <td>{{ record.handoverPerson || '-' }}</td>
+          <td>{{ record.receiver || '-' }}</td>
+          <td>{{ record.wipesCount }}</td>
+          <td>{{ record.diaperCount }}</td>
+          <td>
+            <span :class="['handover-tag', record.handedOver ? 'done' : 'pending']">
+              {{ record.handedOver ? '已交接' : '未交接' }}
+            </span>
+          </td>
+          <td>{{ formatDateTime(record.handoverTime) }}</td>
+          <td class="remark-cell">{{ record.remark || '-' }}</td>
+          <td>
+            <button v-if="!record.handedOver" class="btn-confirm"
+                    :disabled="confirmingId === record.id"
+                    @click="handleConfirm(record)">
+              {{ confirmingId === record.id ? '确认中...' : '确认交接' }}
+            </button>
+            <span v-else class="no-action">-</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <SupplyHandoverForm :visible="formVisible"
+                        @close="formVisible = false" @success="handleFormSuccess" />
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { supplyHandoverApi, areaApi } from '../api'
+import SupplyHandoverForm from './SupplyHandoverForm.vue'
+
+const FILTER_STORAGE_KEY = 'supplyHandover.list.filters'
+
+const handoverList = ref([])
+const areaOptions = ref([])
+const loading = ref(false)
+const areasLoading = ref(false)
+const loadError = ref('')
+const areaError = ref('')
+const filterError = ref('')
+const formVisible = ref(false)
+const confirmingId = ref(null)
+
+const defaultFilters = () => ({
+  areaId: '',
+  handedOver: ''
+})
+
+const loadSavedFilters = () => {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (saved) {
+      return { ...defaultFilters(), ...JSON.parse(saved) }
+    }
+  } catch (error) {
+    console.warn('读取本地值班交接筛选条件失败:', error)
+  }
+  return defaultFilters()
+}
+
+const filters = ref(loadSavedFilters())
+
+const persistFilters = () => {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters.value))
+  } catch (error) {
+    console.warn('保存值班交接筛选条件失败:', error)
+  }
+}
+
+const loadHandovers = async () => {
+  if (filters.value.areaId !== '' && areaOptions.value.length > 0
+      && !areaOptions.value.some(area => String(area.id) === String(filters.value.areaId))) {
+    filterError.value = '所选母婴室不存在或已停用，请重新选择区域'
+    handoverList.value = []
+    return
+  }
+  filterError.value = ''
+  loading.value = true
+  loadError.value = ''
+  try {
+    const params = {}
+    if (filters.value.areaId !== '') params.areaId = filters.value.areaId
+    if (filters.value.handedOver !== '') params.handedOver = filters.value.handedOver
+
+    const res = await supplyHandoverApi.getHandovers(params)
+    if (res.data.code === 200) {
+      handoverList.value = res.data.data || []
+    } else {
+      handoverList.value = []
+      loadError.value = res.data.message || '加载交接清单失败，请稍后重试'
+    }
+  } catch (error) {
+    handoverList.value = []
+    loadError.value = error.response?.data?.message || '接口请求失败，交接清单加载失败，请稍后重试'
+    console.error('加载交接清单失败:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadAreas = async () => {
+  areasLoading.value = true
+  areaError.value = ''
+  try {
+    const res = await areaApi.getAllAreas()
+    if (res.data.code === 200) {
+      areaOptions.value = (res.data.data || []).filter(a => a.status === 1)
+      if (filters.value.areaId !== ''
+          && !areaOptions.value.some(area => String(area.id) === String(filters.value.areaId))) {
+        filters.value.areaId = ''
+        filterError.value = '原筛选母婴室不存在或已停用，已切换为全部在用母婴室'
+      }
+    } else {
+      areaOptions.value = []
+      areaError.value = res.data.message || '加载母婴室列表失败，请稍后重试'
+    }
+  } catch (error) {
+    areaOptions.value = []
+    areaError.value = error.response?.data?.message || '接口请求失败，母婴室列表加载失败，请稍后重试'
+    console.error('加载区域列表失败:', error)
+  } finally {
+    areasLoading.value = false
+  }
+}
+
+const applyFilters = () => {
+  persistFilters()
+  loadHandovers()
+}
+
+const handleReset = () => {
+  filters.value = defaultFilters()
+  persistFilters()
+  loadHandovers()
+}
+
+const openCreateForm = () => {
+  formVisible.value = true
+}
+
+const handleFormSuccess = () => {
+  persistFilters()
+  loadHandovers()
+}
+
+const handleConfirm = async (record) => {
+  if (confirmingId.value !== null) return
+  confirmingId.value = record.id
+  try {
+    const res = await supplyHandoverApi.confirmHandover(record.id)
+    if (res.data.code === 200) {
+      loadHandovers()
+    } else {
+      alert(res.data.message || '交接确认失败，请稍后重试')
+    }
+  } catch (error) {
+    alert(error.response?.data?.message || '接口请求失败，交接确认未提交，请稍后重试')
+    console.error('确认交接失败:', error)
+  } finally {
+    confirmingId.value = null
+  }
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  return value.replace('T', ' ').substring(0, 16)
+}
+
+onMounted(() => {
+  loadAreas()
+  loadHandovers()
+})
+</script>
+
+<style scoped>
+.handover-list {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.list-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 8px;
+  flex: 1;
+  margin-right: 16px;
+}
+
+.add-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 4px;
+  background: #67c23a;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.add-btn:hover {
+  background: #85ce61;
+}
+
+.range-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 12px;
+}
+
+.filter-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.filter-row select {
+  padding: 6px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.btn-filter {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-reset {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.filter-error {
+  margin: 8px 0 0;
+  color: #f56c6c;
+  font-size: 13px;
+}
+
+.inline-retry {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.inline-retry:hover:not(:disabled) {
+  background: #66b1ff;
+}
+
+.inline-retry:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
+}
+
+.load-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.load-banner.error {
+  background: #fef0f0;
+  border: 1px solid #fbc4c4;
+  color: #f56c6c;
+}
+
+.btn-retry {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-retry:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
+}
+
+.handover-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.handover-table th,
+.handover-table td {
+  padding: 12px 8px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 14px;
+}
+
+.handover-table th {
+  background: #f8f9fa;
+  color: #666;
+  font-weight: bold;
+}
+
+.handover-table tbody tr.row-pending {
+  background: #fffbf0;
+}
+
+.handover-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.handover-tag.done {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.handover-tag.pending {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.remark-cell {
+  max-width: 200px;
+  word-break: break-all;
+  color: #666;
+  font-size: 13px;
+}
+
+.handover-table td button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-confirm {
+  background: #409eff;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.btn-confirm:hover:not(:disabled) {
+  background: #66b1ff;
+}
+
+.btn-confirm:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
+}
+
+.no-action {
+  color: #c0c4cc;
+}
+
+.empty-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  color: #909399;
+  background: #fafafa;
+  font-size: 14px;
+}
+
+.empty-reset {
+  padding: 4px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.empty-reset:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+</style>

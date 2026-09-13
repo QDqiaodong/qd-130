@@ -88,4 +88,10 @@ export const roomOpeningApi = {
   createRoomOpening: (data) => api.post('/room-openings', data)
 }
 
+export const supplyHandoverApi = {
+  getHandovers: (params) => api.get('/supply-handovers', { params }),
+  createHandover: (data) => api.post('/supply-handovers', data),
+  confirmHandover: (id) => api.put(`/supply-handovers/${id}/confirm`)
+}
+
 export default api
