@@ -43,7 +43,7 @@ export const transferApi = {
 }
 
 export const inspectionPlanApi = {
-  getAllPlans: () => api.get('/inspection-plans'),
+  getAllPlans: (params) => api.get('/inspection-plans', { params }),
   getPlanById: (id) => api.get(`/inspection-plans/${id}`),
   createPlan: (data) => api.post('/inspection-plans', data),
   updatePlan: (id, data) => api.put(`/inspection-plans/${id}`, data),

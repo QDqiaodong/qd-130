@@ -3,6 +3,7 @@ package com.example.maternal.service;
 
 import com.example.maternal.dto.InspectionPlanDTO;
 import com.example.maternal.dto.InspectionPlanRequest;
+import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.InspectionPlan;
 import com.example.maternal.repository.AreaRepository;
 import com.example.maternal.repository.EquipmentRepository;
@@ -12,7 +13,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,11 +27,37 @@ public class InspectionPlanService {
     private final InspectionPlanRepository inspectionPlanRepository;
     private final EquipmentRepository equipmentRepository;
     private final AreaRepository areaRepository;
+    private final AreaService areaService;
 
     public List<InspectionPlanDTO> getAllPlans() {
+        return getAllPlans(null, null);
+    }
+
+    /**
+     * 按母婴室区域与启用状态筛选计划：区域含下级区域；
+     * 区域类计划按计划区域归属，设备类计划按设备当前所在区域归属。
+     */
+    public List<InspectionPlanDTO> getAllPlans(Long areaId, Integer status) {
+        Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
+        Map<Long, Long> equipmentAreaMap = new HashMap<>();
+        if (scopeAreaIds != null) {
+            equipmentRepository.findAll()
+                    .forEach(e -> equipmentAreaMap.put(e.getId(), e.getCurrentAreaId()));
+        }
+        Map<Long, Long> finalEquipmentAreaMap = equipmentAreaMap;
         return inspectionPlanRepository.findAllOrdered().stream()
+                .filter(plan -> status == null || status.equals(plan.getStatus()))
+                .filter(plan -> scopeAreaIds == null || inScope(plan, scopeAreaIds, finalEquipmentAreaMap))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    private boolean inScope(InspectionPlan plan, Set<Long> scopeAreaIds, Map<Long, Long> equipmentAreaMap) {
+        if (plan.getAreaId() != null) {
+            return scopeAreaIds.contains(plan.getAreaId());
+        }
+        Long equipmentAreaId = plan.getEquipmentId() == null ? null : equipmentAreaMap.get(plan.getEquipmentId());
+        return equipmentAreaId != null && scopeAreaIds.contains(equipmentAreaId);
     }
 
     public InspectionPlanDTO getPlanById(Long id) {
@@ -53,12 +84,24 @@ public class InspectionPlanService {
                 .orElseThrow(() -> new RuntimeException("巡检计划不存在"));
 
         validateScope(request);
+        validateNextInspectionDateEditable(plan, request);
         applyRequest(plan, request);
         if (request.getStatus() != null) {
             plan.setStatus(request.getStatus());
         }
 
         return convertToDTO(inspectionPlanRepository.save(plan));
+    }
+
+    /**
+     * 已停用且本次请求未重新启用的计划，不允许修改下次巡检日期。
+     */
+    private void validateNextInspectionDateEditable(InspectionPlan plan, InspectionPlanRequest request) {
+        boolean staysDisabled = Integer.valueOf(0).equals(plan.getStatus())
+                && !Integer.valueOf(1).equals(request.getStatus());
+        if (staysDisabled && !Objects.equals(plan.getNextInspectionDate(), request.getNextInspectionDate())) {
+            throw new RuntimeException("计划已停用，不能修改下次巡检日期，请先启用计划");
+        }
     }
 
     @Transactional

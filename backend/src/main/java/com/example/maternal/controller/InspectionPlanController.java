@@ -19,8 +19,10 @@ public class InspectionPlanController {
     private final InspectionPlanService inspectionPlanService;
 
     @GetMapping
-    public ApiResponse<List<InspectionPlanDTO>> getAllPlans() {
-        return ApiResponse.success(inspectionPlanService.getAllPlans());
+    public ApiResponse<List<InspectionPlanDTO>> getAllPlans(
+            @RequestParam(required = false) Long areaId,
+            @RequestParam(required = false) Integer status) {
+        return ApiResponse.success(inspectionPlanService.getAllPlans(areaId, status));
     }
 
     @GetMapping("/{id}")

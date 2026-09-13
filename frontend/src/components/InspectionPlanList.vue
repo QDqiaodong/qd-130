@@ -6,6 +6,31 @@
       <button class="add-btn" @click="handleAdd">新建计划</button>
     </div>
 
+    <div class="filter-section">
+      <div class="filter-row">
+        <label class="filter-label">母婴室</label>
+        <select v-model="filters.areaId">
+          <option value="">全部母婴室</option>
+          <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
+        </select>
+        <label class="filter-label">状态</label>
+        <select v-model="filters.status">
+          <option value="">全部状态</option>
+          <option :value="1">启用</option>
+          <option :value="0">停用</option>
+        </select>
+        <button class="btn-filter" @click="applyFilters">筛选</button>
+        <button class="btn-reset" @click="handleReset">重置</button>
+      </div>
+    </div>
+
+    <div v-if="loadError" class="load-banner error">
+      <span>{{ loadError }}</span>
+      <button class="btn-retry" :disabled="loading" @click="loadPlans">
+        {{ loading ? '加载中...' : '重试' }}
+      </button>
+    </div>
+
     <table class="plan-table">
       <thead>
         <tr>
@@ -40,8 +65,8 @@
             </button>
           </td>
         </tr>
-        <tr v-if="planList.length === 0">
-          <td colspan="8" class="empty">暂无巡检计划</td>
+        <tr v-if="!loadError && planList.length === 0">
+          <td colspan="8" class="empty">{{ emptyText }}</td>
         </tr>
       </tbody>
     </table>
@@ -98,7 +123,8 @@
 
             <div class="form-group">
               <label>下次巡检日期:</label>
-              <input type="date" v-model="form.nextInspectionDate" required />
+              <input type="date" v-model="form.nextInspectionDate" required :disabled="editPlanDisabled" />
+              <p v-if="editPlanDisabled" class="field-tip">计划已停用，不能修改下次巡检日期，启用后可修改</p>
             </div>
 
             <div class="form-group">
@@ -125,15 +151,53 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { inspectionPlanApi, equipmentApi, areaApi } from '../api'
+
+const FILTER_STORAGE_KEY = 'inspection.plan.filters'
 
 const planList = ref([])
 const equipmentOptions = ref([])
 const areaOptions = ref([])
+const loading = ref(false)
+const loadError = ref('')
 const formVisible = ref(false)
 const editPlan = ref(null)
 const submitting = ref(false)
+
+const defaultFilters = () => ({
+  areaId: '',
+  status: ''
+})
+
+const loadSavedFilters = () => {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (saved) {
+      return { ...defaultFilters(), ...JSON.parse(saved) }
+    }
+  } catch (error) {
+    console.warn('读取本地巡检计划筛选条件失败:', error)
+  }
+  return defaultFilters()
+}
+
+const filters = ref(loadSavedFilters())
+
+const persistFilters = () => {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters.value))
+  } catch (error) {
+    console.warn('保存巡检计划筛选条件失败:', error)
+  }
+}
+
+const hasActiveFilters = computed(() => filters.value.areaId !== '' || filters.value.status !== '')
+
+const emptyText = computed(() => {
+  if (loading.value) return '加载中...'
+  return hasActiveFilters.value ? '没有符合条件的巡检计划' : '暂无巡检计划'
+})
 
 const defaultForm = () => ({
   planName: '',
@@ -148,15 +212,41 @@ const defaultForm = () => ({
 
 const form = ref(defaultForm())
 
+const editPlanDisabled = computed(() => editPlan.value !== null && editPlan.value.status === 0)
+
 const loadPlans = async () => {
+  loading.value = true
+  loadError.value = ''
   try {
-    const res = await inspectionPlanApi.getAllPlans()
+    const params = {}
+    if (filters.value.areaId !== '') params.areaId = filters.value.areaId
+    if (filters.value.status !== '') params.status = filters.value.status
+
+    const res = await inspectionPlanApi.getAllPlans(params)
     if (res.data.code === 200) {
       planList.value = res.data.data
+    } else {
+      planList.value = []
+      loadError.value = res.data.message || '加载巡检计划失败，请稍后重试'
     }
   } catch (error) {
+    planList.value = []
+    loadError.value = error.response?.data?.message || '接口请求失败，巡检计划加载失败，请稍后重试'
     console.error('加载巡检计划失败:', error)
+  } finally {
+    loading.value = false
   }
+}
+
+const applyFilters = () => {
+  persistFilters()
+  loadPlans()
+}
+
+const handleReset = () => {
+  filters.value = defaultFilters()
+  persistFilters()
+  loadPlans()
 }
 
 const loadOptions = async () => {
@@ -190,7 +280,9 @@ const handleEdit = (plan) => {
     equipmentId: plan.equipmentId || '',
     areaId: plan.areaId || '',
     cycleType: plan.cycleType,
-    nextInspectionDate: plan.nextInspectionDate || new Date().toISOString().split('T')[0],
+    // 停用计划不允许改日期，保留原值（可能为空），避免提交时被默认值覆盖
+    nextInspectionDate: plan.nextInspectionDate
+      || (plan.status === 0 ? '' : new Date().toISOString().split('T')[0]),
     inspector: plan.inspector || '',
     remark: plan.remark || ''
   }
@@ -206,7 +298,10 @@ const handleSubmit = async () => {
     equipmentId: form.value.scopeType === 'equipment' ? form.value.equipmentId : null,
     areaId: form.value.scopeType === 'area' ? form.value.areaId : null,
     cycleType: form.value.cycleType,
-    nextInspectionDate: form.value.nextInspectionDate,
+    // 停用计划保持原下次巡检日期，不随表单提交变更
+    nextInspectionDate: editPlanDisabled.value
+      ? (editPlan.value.nextInspectionDate || null)
+      : (form.value.nextInspectionDate || null),
     inspector: form.value.inspector,
     remark: form.value.remark
   }
@@ -233,7 +328,7 @@ const handleToggle = async (plan) => {
   try {
     const res = await inspectionPlanApi.updatePlanStatus(plan.id, target)
     if (res.data.code === 200) {
-      loadPlans()
+      await loadPlans()
     } else {
       alert(res.data.message || '状态更新失败')
     }
@@ -289,6 +384,84 @@ onMounted(() => {
 
 .add-btn:hover {
   background: #85ce61;
+}
+
+.filter-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.filter-row select {
+  padding: 6px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.btn-filter {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-reset {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.load-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.load-banner.error {
+  background: #fef0f0;
+  border: 1px solid #fbc4c4;
+  color: #f56c6c;
+}
+
+.btn-retry {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-retry:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
 }
 
 .plan-table {
@@ -420,6 +593,18 @@ onMounted(() => {
 
 .form-group textarea {
   resize: vertical;
+}
+
+.form-group input:disabled {
+  background: #f5f7fa;
+  color: #909399;
+  cursor: not-allowed;
+}
+
+.field-tip {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #e6a23c;
 }
 
 .scope-radio {
