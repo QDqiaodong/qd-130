@@ -46,6 +46,10 @@
                     {{ detail.appearanceIntact ? '外观完好' : '外观有破损' }}
                   </span>
                 </div>
+                <div class="info-item full" v-if="!detail.appearanceIntact">
+                  <span class="label">破损部位:</span>
+                  <span class="damage-part strong">{{ detail.damagePart || '未登记破损部位' }}</span>
+                </div>
               </div>
             </template>
             <div v-else class="unsigned-tip">该调配单尚未到货签收，签收前设备不可再次调出</div>
@@ -260,6 +264,10 @@ watch(() => props.visible, (val) => {
 .conclusion.damaged {
   color: #f56c6c;
   background: #fef0f0;
+}
+
+.damage-part {
+  color: #f56c6c;
 }
 
 .unsigned-tip {

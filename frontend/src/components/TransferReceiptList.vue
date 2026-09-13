@@ -14,6 +14,13 @@
             <option value="">全部区域</option>
             <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
           </select>
+          <label class="filter-label">外观</label>
+          <select v-model="filters.appearance">
+            <option value="">全部</option>
+            <option value="unsigned">待签收</option>
+            <option value="intact">外观完好</option>
+            <option value="damaged">外观有破损</option>
+          </select>
           <span class="scope-hint">选择父区域时含全部下级母婴室</span>
           <button class="btn-filter" @click="handleFilter">筛选</button>
           <button class="btn-reset" @click="handleReset">重置</button>
@@ -32,7 +39,7 @@
     <div v-if="loading" class="load-banner loading">签收台账加载中，请稍候...</div>
 
     <div v-if="!loading && !loadError && loaded && receiptList.length === 0" class="load-banner empty">
-      所选调配日/目标区域下暂无已发出的调配单，可调整筛选条件后重新查询
+      当前筛选条件下没有匹配的调配单，可调整外观、调配日或目标区域后重新查询
     </div>
 
     <table v-if="!loading && !loadError" class="receipt-table">
@@ -48,6 +55,7 @@
           <th>签收人</th>
           <th>到货时间</th>
           <th>外观结论</th>
+          <th>破损部位</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -71,6 +79,12 @@
             <span v-if="record.signed"
                   :class="['conclusion', record.appearanceIntact ? 'intact' : 'damaged']">
               {{ record.appearanceIntact ? '完好' : '有破损' }}
+            </span>
+            <span v-else>-</span>
+          </td>
+          <td>
+            <span v-if="record.signed && !record.appearanceIntact" class="damage-part">
+              {{ record.damagePart || '未登记破损部位' }}
             </span>
             <span v-else>-</span>
           </td>
@@ -110,7 +124,7 @@ const signRecord = ref(null)
 const detailVisible = ref(false)
 const detailId = ref(null)
 
-const defaultFilters = () => ({ startDate: '', endDate: '', toAreaId: '' })
+const defaultFilters = () => ({ startDate: '', endDate: '', toAreaId: '', appearance: '' })
 
 const filters = ref(defaultFilters())
 
@@ -135,6 +149,7 @@ const buildParams = () => {
   if (filters.value.startDate) params.startDate = filters.value.startDate
   if (filters.value.endDate) params.endDate = filters.value.endDate
   if (filters.value.toAreaId !== '') params.toAreaId = filters.value.toAreaId
+  if (filters.value.appearance !== '') params.appearance = filters.value.appearance
   return params
 }
 
@@ -408,6 +423,11 @@ tr.clickable {
 .conclusion.damaged {
   color: #f56c6c;
   background: #fef0f0;
+}
+
+.damage-part {
+  color: #f56c6c;
+  font-size: 13px;
 }
 
 .btn-detail,

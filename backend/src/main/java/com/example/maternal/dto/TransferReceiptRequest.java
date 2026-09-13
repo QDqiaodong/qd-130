@@ -20,4 +20,7 @@ public class TransferReceiptRequest {
 
     /** 外观是否完好：true-完好，false-有破损 */
     private Boolean appearanceIntact;
+
+    /** 破损部位：外观有破损时必填，写清破损部位后才能确认签收 */
+    private String damagePart;
 }

@@ -165,6 +165,14 @@ public class TransferRecordService {
         if (request.getAppearanceIntact() == null) {
             throw new RuntimeException("请选择外观是否完好");
         }
+        // 外观有破损必须写清破损部位，否则不允许确认签收（口径由服务端统一校验落库）
+        if (Boolean.FALSE.equals(request.getAppearanceIntact())
+                && (request.getDamagePart() == null || request.getDamagePart().trim().isEmpty())) {
+            throw new RuntimeException("外观有破损时必须写清破损部位后才能确认签收");
+        }
+        if (request.getDamagePart() != null && request.getDamagePart().trim().length() > 200) {
+            throw new RuntimeException("破损部位描述不能超过200字");
+        }
         if (request.getArrivalTime().toLocalDate().isBefore(record.getTransferDate())) {
             throw new RuntimeException("到货时间不能早于调配日期");
         }
@@ -172,6 +180,9 @@ public class TransferRecordService {
         record.setReceiver(request.getReceiver().trim());
         record.setArrivalTime(request.getArrivalTime());
         record.setAppearanceIntact(request.getAppearanceIntact());
+        // 仅外观有破损才落破损部位，外观完好一律清空，避免前端串值
+        record.setDamagePart(Boolean.FALSE.equals(request.getAppearanceIntact())
+                ? request.getDamagePart().trim() : null);
         TransferRecord saved = transferRecordRepository.save(record);
 
         // 签收完成才落位置：设备当前区域从调出地变更为目标区域，与签收状态同事务落库
@@ -184,15 +195,42 @@ public class TransferRecordService {
     }
 
     /**
-     * 到货签收台账：可按调配日区间和目标区域筛选（选父区域含全部下级）。
+     * 到货签收台账：可按调配日区间和目标区域筛选（选父区域含全部下级），
+     * 并可叠加外观筛选：unsigned-待签收（未填外观）、intact-外观完好、damaged-外观有破损。
      * 签收标记随 DTO 一并返回，刷新后与「还能不能调出」保持同一口径。
      */
     public List<TransferRecordDTO> getReceipts(LocalDate startDate, LocalDate endDate, Long toAreaId) {
+        return getReceipts(startDate, endDate, toAreaId, null);
+    }
+
+    public List<TransferRecordDTO> getReceipts(LocalDate startDate, LocalDate endDate,
+                                               Long toAreaId, String appearance) {
         java.util.Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(toAreaId);
         return transferRecordRepository.findActiveForReceipt(startDate, endDate).stream()
                 .filter(t -> scopeAreaIds == null || scopeAreaIds.contains(t.getToAreaId()))
+                .filter(t -> matchAppearance(t, appearance))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 外观筛选口径全部依据服务端落库字段：未签收（arrivalTime 为空）→待签收；
+     * 已签收再按 appearanceIntact 区分完好/有破损。非法取值直接拦截并提示。
+     */
+    private boolean matchAppearance(TransferRecord t, String appearance) {
+        if (appearance == null || appearance.trim().isEmpty()) {
+            return true;
+        }
+        switch (appearance.trim()) {
+            case "unsigned":
+                return t.getArrivalTime() == null;
+            case "intact":
+                return t.getArrivalTime() != null && Boolean.TRUE.equals(t.getAppearanceIntact());
+            case "damaged":
+                return t.getArrivalTime() != null && Boolean.FALSE.equals(t.getAppearanceIntact());
+            default:
+                throw new RuntimeException("外观筛选条件不合法，请选择待签收、外观完好或外观有破损");
+        }
     }
 
     @Transactional
@@ -235,6 +273,7 @@ public class TransferRecordService {
         dto.setReceiver(record.getReceiver());
         dto.setArrivalTime(record.getArrivalTime());
         dto.setAppearanceIntact(record.getAppearanceIntact());
+        dto.setDamagePart(record.getDamagePart());
         // 签收标记服务端统一计算：有到货签收时间即视为已签收，列表/详情/调出闸门共用此口径
         dto.setSigned(record.getArrivalTime() != null);
         

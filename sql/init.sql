@@ -63,6 +63,7 @@ CREATE TABLE transfer_record (
     receiver VARCHAR(50) COMMENT '到货签收人（值班）',
     arrival_time DATETIME COMMENT '到货签收时间',
     appearance_intact TINYINT(1) COMMENT '到货外观是否完好：0-有破损，1-完好',
+    damage_part VARCHAR(200) COMMENT '外观破损部位：外观有破损签收时必填',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_transfer_no (transfer_no),

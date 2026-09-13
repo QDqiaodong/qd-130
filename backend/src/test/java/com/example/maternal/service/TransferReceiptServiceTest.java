@@ -273,11 +273,92 @@ class TransferReceiptServiceTest {
         });
     }
 
+    @Test
+    @DisplayName("外观有破损且写清破损部位：破损部位随签收落库，DTO标记已签收")
+    void sign_damagedWithPart_success() {
+        when(transferRecordRepository.findById(1L)).thenReturn(Optional.of(unsigned));
+        when(transferRecordRepository.save(any(TransferRecord.class))).thenAnswer(i -> i.getArgument(0));
+        Equipment moving = equipment(10L);
+        moving.setCurrentAreaId(4L);
+        when(equipmentRepository.findById(10L)).thenReturn(Optional.of(moving));
+
+        TransferRecordDTO dto = transferRecordService.signReceipt(1L, receiptRequest(
+                "钱值班", LocalDateTime.of(2026, 9, 11, 9, 30), false, "瓶身左侧有裂纹"));
+
+        assertThat(dto.getAppearanceIntact()).isFalse();
+        assertThat(dto.getDamagePart()).isEqualTo("瓶身左侧有裂纹");
+        assertThat(dto.getSigned()).isTrue();
+        assertThat(moving.getCurrentAreaId()).isEqualTo(TO_AREA);
+    }
+
+    @Test
+    @DisplayName("外观有破损但未写破损部位：拒绝签收且不落库、不动设备位置")
+    void sign_damagedWithoutPart_rejected() {
+        when(transferRecordRepository.findById(1L)).thenReturn(Optional.of(unsigned));
+
+        assertThatThrownBy(() -> transferRecordService.signReceipt(1L, receiptRequest(
+                "钱值班", LocalDateTime.of(2026, 9, 11, 9, 30), false, "   ")))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("破损部位");
+
+        verify(transferRecordRepository, never()).save(any(TransferRecord.class));
+        verify(equipmentRepository, never()).save(any(Equipment.class));
+    }
+
+    @Test
+    @DisplayName("破损部位超长（超过200字）被拒绝")
+    void sign_damagePartTooLong_rejected() {
+        when(transferRecordRepository.findById(1L)).thenReturn(Optional.of(unsigned));
+        String tooLong = "裂".repeat(201);
+
+        assertThatThrownBy(() -> transferRecordService.signReceipt(1L, receiptRequest(
+                "钱值班", LocalDateTime.of(2026, 9, 11, 9, 30), false, tooLong)))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("200");
+        verify(transferRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("签收台账按外观筛选：待签收/完好/有破损口径正确，非法取值拦截提示")
+    void receipts_filterByAppearance() {
+        TransferRecord damaged = transfer(4L, 13L, 4L, TO_AREA);
+        damaged.setReceiver("孙值班");
+        damaged.setArrivalTime(LocalDateTime.of(2026, 9, 12, 9, 0));
+        damaged.setAppearanceIntact(false);
+        damaged.setDamagePart("底座一角凹陷");
+        when(transferRecordRepository.findActiveForReceipt(any(), any()))
+                .thenReturn(List.of(unsigned, signed, damaged));
+        when(areaService.resolveScopeAreaIds(any())).thenReturn(null);
+
+        List<TransferRecordDTO> unsignedRows = transferRecordService
+                .getReceipts(null, null, null, "unsigned");
+        assertThat(unsignedRows).extracting(TransferRecordDTO::getId).containsExactly(1L);
+
+        List<TransferRecordDTO> intactRows = transferRecordService
+                .getReceipts(null, null, null, "intact");
+        assertThat(intactRows).extracting(TransferRecordDTO::getId).containsExactly(2L);
+
+        List<TransferRecordDTO> damagedRows = transferRecordService
+                .getReceipts(null, null, null, "damaged");
+        assertThat(damagedRows).hasSize(1);
+        assertThat(damagedRows.get(0).getDamagePart()).isEqualTo("底座一角凹陷");
+
+        assertThatThrownBy(() -> transferRecordService.getReceipts(null, null, null, "bogus"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("外观筛选条件不合法");
+    }
+
     private TransferReceiptRequest receiptRequest(String receiver, LocalDateTime time, Boolean intact) {
+        return receiptRequest(receiver, time, intact, null);
+    }
+
+    private TransferReceiptRequest receiptRequest(String receiver, LocalDateTime time,
+                                                  Boolean intact, String damagePart) {
         TransferReceiptRequest req = new TransferReceiptRequest();
         req.setReceiver(receiver);
         req.setArrivalTime(time);
         req.setAppearanceIntact(intact);
+        req.setDamagePart(damagePart);
         return req;
     }
 

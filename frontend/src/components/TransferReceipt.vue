@@ -35,6 +35,13 @@
             </div>
           </div>
 
+          <div class="form-group" v-if="form.appearanceIntact === false">
+            <label>破损部位: <span class="required">*</span></label>
+            <textarea v-model="form.damagePart" rows="3" maxlength="200"
+                      placeholder="请写清破损部位（如：瓶身左侧有裂纹、底座一角凹陷），最多200字"></textarea>
+            <p class="field-hint">外观有破损时必须写清破损部位，才能确认签收</p>
+          </div>
+
           <p v-if="errorMessage" class="form-error">{{ errorMessage }}</p>
 
           <div class="form-buttons">
@@ -72,7 +79,8 @@ const nowLocal = () => {
 const defaultForm = () => ({
   receiver: '',
   arrivalTime: nowLocal(),
-  appearanceIntact: null
+  appearanceIntact: null,
+  damagePart: ''
 })
 
 const form = ref(defaultForm())
@@ -88,6 +96,14 @@ const validate = () => {
   }
   if (form.value.appearanceIntact === null) {
     errorMessage.value = '请选择外观是否完好'
+    return false
+  }
+  if (form.value.appearanceIntact === false && !form.value.damagePart.trim()) {
+    errorMessage.value = '外观有破损，请写清破损部位后再确认签收'
+    return false
+  }
+  if (form.value.damagePart.trim().length > 200) {
+    errorMessage.value = '破损部位描述不能超过200字'
     return false
   }
   if (props.record && props.record.transferDate
@@ -108,7 +124,8 @@ const handleSubmit = async () => {
     const res = await transferApi.signTransferReceipt(props.record.id, {
       receiver: form.value.receiver.trim(),
       arrivalTime: form.value.arrivalTime,
-      appearanceIntact: form.value.appearanceIntact
+      appearanceIntact: form.value.appearanceIntact,
+      damagePart: form.value.appearanceIntact === false ? form.value.damagePart.trim() : null
     })
     if (res.data.code === 200) {
       emit('signed')
@@ -249,13 +266,25 @@ watch(() => props.visible, (val) => {
 }
 
 .form-group input[type="text"],
-.form-group input[type="datetime-local"] {
+.form-group input[type="datetime-local"],
+.form-group textarea {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   font-size: 14px;
   box-sizing: border-box;
+}
+
+.form-group textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #e6a23c;
 }
 
 .required {

@@ -59,6 +59,10 @@ public class TransferRecord {
     @Column(name = "appearance_intact")
     private Boolean appearanceIntact;
 
+    /** 外观破损部位：外观有破损签收时必填，外观完好时为空 */
+    @Column(name = "damage_part", length = 200)
+    private String damagePart;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     

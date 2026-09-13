@@ -76,14 +76,16 @@ public class TransferRecordController {
     }
 
     /**
-     * 到货签收台账：按调配日区间（均可空）和目标区域（含下级）查询已发出的调配单。
+     * 到货签收台账：按调配日区间（均可空）、目标区域（含下级）和外观结论
+     * （unsigned-待签收、intact-外观完好、damaged-外观有破损）查询已发出的调配单。
      */
     @GetMapping("/receipts")
     public ApiResponse<List<TransferRecordDTO>> getReceipts(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam(required = false) Long toAreaId) {
-        return ApiResponse.success(transferRecordService.getReceipts(startDate, endDate, toAreaId));
+            @RequestParam(required = false) Long toAreaId,
+            @RequestParam(required = false) String appearance) {
+        return ApiResponse.success(transferRecordService.getReceipts(startDate, endDate, toAreaId, appearance));
     }
 
     @PostMapping("/{id}/receipt")
