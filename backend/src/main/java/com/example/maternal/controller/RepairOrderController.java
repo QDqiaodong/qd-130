@@ -29,9 +29,10 @@ public class RepairOrderController {
             @RequestParam(required = false) Long areaId,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) String equipmentType,
-            @RequestParam(required = false) Long equipmentCurrentAreaId) {
+            @RequestParam(required = false) Long equipmentCurrentAreaId,
+            @RequestParam(required = false) Integer trialStatus) {
         return ApiResponse.success(repairOrderService
-                .getRepairs(startDate, endDate, areaId, status, equipmentType, equipmentCurrentAreaId));
+                .getRepairs(startDate, endDate, areaId, status, equipmentType, equipmentCurrentAreaId, trialStatus));
     }
 
     @GetMapping("/{id}")

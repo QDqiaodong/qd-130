@@ -11,4 +11,7 @@ public class RepairStatusRequest {
     private String repairman;
 
     private String repairNote;
+
+    /** 复用前试机结论：维修中 → 已恢复（结单）时必填 */
+    private String trialResult;
 }

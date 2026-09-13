@@ -192,19 +192,31 @@ public class RepairOrderService {
         return getRepairs(startDate, endDate, areaId, status, equipmentType, null);
     }
 
-    /**
-     * @param equipmentCurrentAreaId 看板下钻使用：按设备「当前所在区域」匹配报修单，
-     *                               与看板当前维修数/待处理数口径一致；为 null 时回退到报修单记录区域
-     */
     public List<RepairOrderDTO> getRepairs(LocalDate startDate, LocalDate endDate, Long areaId,
                                            Integer status, String equipmentType,
                                            Long equipmentCurrentAreaId) {
+        return getRepairs(startDate, endDate, areaId, status, equipmentType, equipmentCurrentAreaId, null);
+    }
+
+    /**
+     * @param equipmentCurrentAreaId 看板下钻使用：按设备「当前所在区域」匹配报修单，
+     *                               与看板当前维修数/待处理数口径一致；为 null 时回退到报修单记录区域
+     * @param trialStatus            是否已试机筛选：1-已试机（已落库试机结论），0-未试机；null 不过滤
+     */
+    public List<RepairOrderDTO> getRepairs(LocalDate startDate, LocalDate endDate, Long areaId,
+                                           Integer status, String equipmentType,
+                                           Long equipmentCurrentAreaId, Integer trialStatus) {
+        if (trialStatus != null && trialStatus != 0 && trialStatus != 1) {
+            throw new RuntimeException("试机筛选条件不合法，只能选择全部、已试机或未试机");
+        }
         LocalDateTime startTime = startDate != null ? startDate.atStartOfDay() : null;
         LocalDateTime endTime = endDate != null ? endDate.plusDays(1).atStartOfDay() : null;
         java.util.Set<Long> recordScopeAreaIds = areaService.resolveScopeAreaIds(areaId);
         java.util.Set<Long> currentScopeAreaIds = areaService.resolveScopeAreaIds(equipmentCurrentAreaId);
         return repairOrderRepository.findForDashboard(startTime, endTime, null, equipmentType).stream()
                 .filter(order -> status == null || status.equals(order.getStatus()))
+                .filter(order -> trialStatus == null
+                        || trialStatus.equals(1) == isTrialDone(order))
                 .filter(order -> {
                     if (currentScopeAreaIds != null) {
                         Equipment equipment = equipmentRepository.findById(order.getEquipmentId()).orElse(null);
@@ -215,6 +227,11 @@ public class RepairOrderService {
                 })
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    /** 是否已试机以服务端落库的试机结论为准，空串视为未试机 */
+    private boolean isTrialDone(RepairOrder order) {
+        return order.getTrialResult() != null && !order.getTrialResult().trim().isEmpty();
     }
 
     public RepairOrderDTO getRepairById(Long id) {
@@ -247,9 +264,19 @@ public class RepairOrderService {
             order.setStartTime(LocalDateTime.now());
             order.setRepairman(request.getRepairman());
         } else if (current == STATUS_REPAIRING && target == STATUS_RESTORED) {
+            // 维修完成点已恢复（结单）前必须填写复用前试机结论，未试机不能结单
+            String trialResult = request.getTrialResult();
+            if (trialResult == null || trialResult.trim().isEmpty()) {
+                throw new RuntimeException("复用前试机结论为必填项，请先试机并填写试机结论后再结单恢复");
+            }
+            if (trialResult.trim().length() > 500) {
+                throw new RuntimeException("复用前试机结论不能超过500字");
+            }
             order.setStatus(STATUS_RESTORED);
             order.setFinishTime(LocalDateTime.now());
             order.setRepairNote(request.getRepairNote());
+            order.setTrialResult(trialResult.trim());
+            order.setTrialTime(LocalDateTime.now());
             if (request.getRepairman() != null && !request.getRepairman().isEmpty()) {
                 order.setRepairman(request.getRepairman());
             }
@@ -296,9 +323,17 @@ public class RepairOrderService {
             timeline.add(new TimelineItem(order.getStartTime(), "开始维修",
                     "维修人：" + (order.getRepairman() != null ? order.getRepairman() : "-") + "，设备维修期间不可调配", "repair"));
         }
+        if (order.getTrialTime() != null || (order.getTrialResult() != null && !order.getTrialResult().trim().isEmpty())) {
+            timeline.add(new TimelineItem(order.getTrialTime() != null ? order.getTrialTime() : order.getFinishTime(),
+                    "复用前试机",
+                    "试机结论：" + order.getTrialResult()
+                            + (order.getTrialTime() != null ? "，试机时间：" + order.getTrialTime() : ""), "trial"));
+        }
         if (order.getFinishTime() != null) {
             timeline.add(new TimelineItem(order.getFinishTime(), "维修完成，设备恢复",
-                    (order.getRepairNote() != null ? order.getRepairNote() : "设备已恢复正常，可重新调配"), "repair"));
+                    (order.getRepairNote() != null ? order.getRepairNote() : "设备已恢复正常，可重新调配")
+                            + (order.getTrialResult() != null && !order.getTrialResult().trim().isEmpty()
+                            ? "；复用前试机结论：" + order.getTrialResult().trim() : ""), "repair"));
         }
         return timeline;
     }
@@ -331,6 +366,9 @@ public class RepairOrderService {
         dto.setStartTime(order.getStartTime());
         dto.setFinishTime(order.getFinishTime());
         dto.setRepairNote(order.getRepairNote());
+        dto.setTrialResult(order.getTrialResult());
+        dto.setTrialTime(order.getTrialTime());
+        dto.setTrialDone(isTrialDone(order));
         dto.setUrgeNote(order.getUrgeNote());
         dto.setUrgeTime(order.getUrgeTime());
         dto.setCreatedAt(order.getCreatedAt());

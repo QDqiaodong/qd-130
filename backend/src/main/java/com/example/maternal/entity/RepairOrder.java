@@ -64,6 +64,14 @@ public class RepairOrder {
     @Column(name = "repair_note", length = 500)
     private String repairNote;
 
+    /** 复用前试机结论：维修完成恢复前必须填写，未试机不能结单 */
+    @Column(name = "trial_result", length = 500)
+    private String trialResult;
+
+    /** 复用前试机时间：填写试机结论并确认恢复时写入 */
+    @Column(name = "trial_time")
+    private LocalDateTime trialTime;
+
     @Column(name = "urge_note", length = 500)
     private String urgeNote;
 

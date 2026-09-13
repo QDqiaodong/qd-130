@@ -29,9 +29,22 @@
           <option :value="1">维修中</option>
           <option :value="2">已恢复</option>
         </select>
-        <button class="btn-filter" @click="loadRepairs">筛选</button>
+        <select v-model="filters.trialStatus">
+          <option value="">试机情况：全部</option>
+          <option :value="1">已试机</option>
+          <option :value="0">未试机</option>
+        </select>
+        <button class="btn-filter" @click="applyFilters">筛选</button>
         <button class="btn-reset" @click="handleReset">重置</button>
       </div>
+      <p v-if="filterError" class="repair-error">{{ filterError }}</p>
+    </div>
+
+    <div v-if="loadError" class="repair-banner error">
+      <span>{{ loadError }}</span>
+      <button class="btn-retry" :disabled="loading" @click="loadRepairs">
+        {{ loading ? '加载中...' : '重新加载' }}
+      </button>
     </div>
 
     <div class="overdue-panel">
@@ -86,6 +99,7 @@
           <th>报修时间</th>
           <th>状态</th>
           <th>维修人</th>
+          <th>复用前试机</th>
           <th>恢复时间</th>
           <th>操作</th>
         </tr>
@@ -107,6 +121,10 @@
             <span :class="['status-tag', statusClass(order.status)]">{{ statusText(order.status) }}</span>
           </td>
           <td>{{ order.repairman || '-' }}</td>
+          <td>
+            <span v-if="order.trialDone" class="trial-tag done" :title="order.trialResult">已试机</span>
+            <span v-else class="trial-tag pending">未试机</span>
+          </td>
           <td>{{ order.finishTime ? formatTime(order.finishTime) : '-' }}</td>
           <td>
             <button class="btn-detail" @click="handleDetail(order)">详情</button>
@@ -115,7 +133,9 @@
           </td>
         </tr>
         <tr v-if="repairList.length === 0">
-          <td colspan="11" class="empty">暂无报修单</td>
+          <td colspan="12" class="empty">
+            {{ loading ? '加载中...' : (loadFinished ? '当前筛选条件下没有报修单，请调整筛选条件后重试' : '暂无报修单') }}
+          </td>
         </tr>
       </tbody>
     </table>
@@ -137,7 +157,7 @@
             <span class="label">故障描述:</span><span>{{ currentOrder.faultDesc || '-' }}</span>
           </div>
           <p class="transition-tip" v-if="transitionTarget === 1">开始维修后设备进入维修中状态，期间不可调配。</p>
-          <p class="transition-tip" v-else>确认恢复后设备维修完成，可重新调配。</p>
+          <p class="transition-tip" v-else>确认恢复即结单，设备恢复可调配。结单前必须先做复用前试机并填写试机结论，未试机不能结单。</p>
 
           <div class="form-group">
             <label>维修人:</label>
@@ -147,6 +167,13 @@
             <label>维修说明:</label>
             <textarea v-model="transitionForm.repairNote" rows="3" placeholder="请输入维修处理说明"></textarea>
           </div>
+          <div class="form-group" v-if="transitionTarget === 2">
+            <label class="required-label">复用前试机结论:</label>
+            <textarea v-model="transitionForm.trialResult" rows="3" maxlength="500"
+                      placeholder="必填：请填写复用前试机情况与结论，如通电试运行结果、功能是否正常、能否恢复复用"></textarea>
+            <p class="field-hint">未填写试机结论不能结单，结论将随恢复时间一并记入报修单时间线</p>
+          </div>
+          <p v-if="transitionError" class="overdue-error">{{ transitionError }}</p>
 
           <div class="form-buttons">
             <button type="button" class="btn-cancel" @click="transitionVisible = false">取消</button>
@@ -184,6 +211,13 @@
               <div class="info-item"><span class="label">报修人:</span><span>{{ detail.reporter || '-' }}</span></div>
               <div class="info-item full"><span class="label">故障描述:</span><span>{{ detail.faultDesc || '-' }}</span></div>
               <div class="info-item full" v-if="detail.repairNote"><span class="label">维修说明:</span><span>{{ detail.repairNote }}</span></div>
+              <div class="info-item full" v-if="detail.trialDone">
+                <span class="label">试机结论:</span>
+                <span>{{ detail.trialResult }}<template v-if="detail.trialTime">（{{ formatTime(detail.trialTime) }}）</template></span>
+              </div>
+              <div class="info-item full" v-else-if="detail.status === 1">
+                <span class="label">试机结论:</span><span class="trial-missing">尚未试机，恢复结单前必须补填复用前试机结论</span>
+              </div>
               <div class="info-item full" v-if="detail.urgeNote">
                 <span class="label">最近催办:</span><span>{{ detail.urgeNote }}（{{ formatTime(detail.urgeTime) }}）</span>
               </div>
@@ -316,10 +350,15 @@ const emit = defineEmits(['back-dashboard'])
 const repairList = ref([])
 const areaOptions = ref([])
 const typeOptions = ref([])
+const loading = ref(false)
+const loadError = ref('')
+const loadFinished = ref(false)
+const filterError = ref('')
 const transitionVisible = ref(false)
 const transitionTarget = ref(1)
 const currentOrder = ref(null)
-const transitionForm = ref({ repairman: '', repairNote: '' })
+const transitionForm = ref({ repairman: '', repairNote: '', trialResult: '' })
+const transitionError = ref('')
 const submitting = ref(false)
 const detailVisible = ref(false)
 const detail = ref(null)
@@ -341,14 +380,39 @@ const urgeForm = ref({ followUpPerson: '', urgeNote: '' })
 const urgeFormError = ref('')
 const urging = ref(false)
 
+const FILTER_STORAGE_KEY = 'repair.list.filters'
+
 const defaultFilters = () => ({
   startDate: '',
   endDate: '',
   areaId: '',
   equipmentType: '',
   status: '',
+  trialStatus: '',
   equipmentCurrentAreaId: null
 })
+
+const loadSavedFilters = () => {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (saved) {
+      return { ...defaultFilters(), ...JSON.parse(saved) }
+    }
+  } catch (error) {
+    console.warn('读取本地报修单筛选条件失败:', error)
+  }
+  return defaultFilters()
+}
+
+const persistFilters = () => {
+  try {
+    // 看板下钻的临时口径不落本地，避免刷新后残留与当前视图不符的筛选
+    const toSave = { ...filters.value, equipmentCurrentAreaId: null }
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(toSave))
+  } catch (error) {
+    console.warn('保存报修单筛选条件失败:', error)
+  }
+}
 
 const filters = ref(defaultFilters())
 
@@ -371,7 +435,24 @@ const drillTip = computed(() => {
   return parts.length > 0 ? `来自健康看板的筛选：${parts.join('，')}` : ''
 })
 
+const validateDateRange = () => {
+  if (filters.value.startDate && filters.value.endDate
+      && filters.value.startDate > filters.value.endDate) {
+    filterError.value = '报修开始日期不能晚于结束日期'
+    return false
+  }
+  filterError.value = ''
+  return true
+}
+
 const loadRepairs = async () => {
+  if (!validateDateRange()) {
+    repairList.value = []
+    return
+  }
+  loading.value = true
+  loadError.value = ''
+  loadFinished.value = false
   try {
     const params = {}
     if (filters.value.startDate) params.startDate = filters.value.startDate
@@ -383,17 +464,28 @@ const loadRepairs = async () => {
     }
     if (filters.value.equipmentType !== '') params.equipmentType = filters.value.equipmentType
     if (filters.value.status !== '') params.status = filters.value.status
+    // 是否已试机由服务端按落库的试机结论统一计算，刷新后口径一致
+    if (filters.value.trialStatus !== '') params.trialStatus = filters.value.trialStatus
 
     const res = await repairApi.getRepairs(params)
     if (res.data.code === 200) {
       repairList.value = res.data.data
     } else {
-      alert(res.data.message || '加载报修单失败')
+      loadError.value = res.data.message || '加载报修单失败，请稍后重试'
     }
   } catch (error) {
-    alert(error.response?.data?.message || '加载报修单失败，请稍后重试')
+    loadError.value = error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，请稍后重试' : '接口请求失败，报修单加载失败，请检查网络或稍后重试')
     console.error('加载报修单失败:', error)
+  } finally {
+    loading.value = false
+    loadFinished.value = true
   }
+}
+
+const applyFilters = () => {
+  persistFilters()
+  loadRepairs()
 }
 
 const loadAreas = async () => {
@@ -420,21 +512,28 @@ const loadTypes = async () => {
 
 const applyInitialFilters = () => {
   const init = props.initialFilters || {}
-  filters.value = {
-    ...defaultFilters(),
-    ...init,
-    // 看板当前状态下钻锁定设备当前区域口径，下拉区域不再生效，避免明细数与卡片不一致
-    areaId: init.equipmentCurrentAreaId ? '' : (init.areaId ?? '')
+  if (Object.keys(init).length > 0) {
+    // 看板下钻：只使用看板条件，不叠加本地筛选，保证明细数与看板卡片一致
+    filters.value = {
+      ...defaultFilters(),
+      ...init,
+      areaId: init.equipmentCurrentAreaId ? '' : (init.areaId ?? '')
+    }
+    return
   }
+  // 普通进入/刷新：恢复本地保存的筛选（含是否已试机），刷新后仍能看出
+  filters.value = loadSavedFilters()
 }
 
 const handleReset = () => {
   filters.value = defaultFilters()
+  persistFilters()
   loadRepairs()
 }
 
 const clearDrillFilters = () => {
   filters.value = defaultFilters()
+  persistFilters()
   loadRepairs()
 }
 
@@ -550,29 +649,43 @@ const refreshOverdueIfLoaded = () => {
 const openTransition = (order, target) => {
   currentOrder.value = order
   transitionTarget.value = target
-  transitionForm.value = { repairman: order.repairman || '', repairNote: '' }
+  transitionForm.value = { repairman: order.repairman || '', repairNote: '', trialResult: '' }
+  transitionError.value = ''
   transitionVisible.value = true
 }
 
 const handleTransition = async () => {
   if (submitting.value || !currentOrder.value) return
+  // 结单恢复前必须填写复用前试机结论，未试机不能结单
+  if (transitionTarget.value === 2
+      && (!transitionForm.value.trialResult || !transitionForm.value.trialResult.trim())) {
+    transitionError.value = '请先试机并填写复用前试机结论，未试机不能结单恢复'
+    return
+  }
+  transitionError.value = ''
   submitting.value = true
 
   try {
-    const res = await repairApi.updateRepairStatus(currentOrder.value.id, {
+    const payload = {
       status: transitionTarget.value,
       repairman: transitionForm.value.repairman,
       repairNote: transitionForm.value.repairNote
-    })
+    }
+    if (transitionTarget.value === 2) {
+      payload.trialResult = transitionForm.value.trialResult.trim()
+    }
+    const res = await repairApi.updateRepairStatus(currentOrder.value.id, payload)
     if (res.data.code === 200) {
       transitionVisible.value = false
+      persistFilters()
       loadRepairs()
       refreshOverdueIfLoaded()
     } else {
-      alert(res.data.message || '状态更新失败')
+      transitionError.value = res.data.message || '状态更新失败，请稍后重试'
     }
   } catch (error) {
-    alert(error.response?.data?.message || '状态更新失败')
+    transitionError.value = error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，请稍后重试' : '状态更新请求失败，请检查网络或稍后重试')
   } finally {
     submitting.value = false
   }
@@ -585,8 +698,12 @@ const handleDetail = async (order) => {
     if (res.data.code === 200) {
       detail.value = res.data.data
       detailVisible.value = true
+    } else {
+      alert(res.data.message || '加载报修单详情失败，请稍后重试')
     }
   } catch (error) {
+    alert(error.response?.data?.message
+      || (error.code === 'ECONNABORTED' ? '接口请求超时，请稍后重试' : '加载报修单详情失败，请检查网络或稍后重试'))
     console.error('加载报修单详情失败:', error)
   }
 }
@@ -1263,5 +1380,93 @@ onMounted(() => {
   font-size: 12px;
   color: #999;
   margin-top: 2px;
+}
+
+.timeline-dot.trial {
+  background: #67c23a;
+}
+
+.trial-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.trial-tag.done {
+  background: #f0f9eb;
+  color: #67c23a;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trial-tag.pending {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.trial-missing {
+  color: #f56c6c;
+}
+
+.required-label::before {
+  content: '*';
+  color: #f56c6c;
+  margin-right: 4px;
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  color: #e6a23c;
+  font-size: 12px;
+}
+
+.repair-error {
+  margin: 8px 0 0;
+  color: #f56c6c;
+  font-size: 13px;
+}
+
+.repair-banner {
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.repair-banner.error {
+  background: #fef0f0;
+  color: #f56c6c;
+  border: 1px solid #fbc4c4;
+}
+
+.repair-banner.empty {
+  background: #f4f4f5;
+  color: #909399;
+  border: 1px solid #e9e9eb;
+  justify-content: center;
+}
+
+.btn-retry {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #f56c6c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.btn-retry:disabled {
+  background: #fab6b6;
+  cursor: not-allowed;
 }
 </style>

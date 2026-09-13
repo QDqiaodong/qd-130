@@ -197,6 +197,8 @@ CREATE TABLE repair_order (
     start_time DATETIME COMMENT '开始维修时间',
     finish_time DATETIME COMMENT '恢复完成时间',
     repair_note VARCHAR(500) COMMENT '维修说明',
+    trial_result VARCHAR(500) COMMENT '复用前试机结论（恢复结单前必填，未试机不能结单）',
+    trial_time DATETIME COMMENT '复用前试机时间',
     urge_note VARCHAR(500) COMMENT '最近催办说明',
     urge_time DATETIME COMMENT '最近催办时间',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -241,9 +243,9 @@ INSERT INTO inspection_record (inspection_no, plan_id, equipment_id, area_id, in
 ('IN202609100001', NULL, 6, 6, '2026-09-10', 2, '护理台护栏松动，疑似卡扣未锁紧', NULL, '王工', NULL, '钱值班', '2026-09-10 15:20:00', 2, '值班现场复测护栏已锁紧，为巡检误判，无需报修'),
 ('IN202609110001', NULL, 8, 7, '2026-09-11', 2, '护理台软包破损，海绵外露', NULL, '钱工', NULL, NULL, NULL, NULL, NULL);
 
-INSERT INTO repair_order (repair_no, inspection_id, equipment_id, area_id, fault_desc, photo_url, status, reporter, repairman, start_time, finish_time, repair_note) VALUES
-('RP202609070001', 1, 2, 4, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', 2, '李工', '王师傅', '2026-09-07 14:00:00', '2026-09-08 17:30:00', '更换原厂卡扣，拉力测试合格，设备恢复使用'),
-('RP202609080001', 2, 1, 4, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', 0, '张工', NULL, NULL, NULL, NULL);
+INSERT INTO repair_order (repair_no, inspection_id, equipment_id, area_id, fault_desc, photo_url, status, reporter, repairman, start_time, finish_time, repair_note, trial_result, trial_time) VALUES
+('RP202609070001', 1, 2, 4, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', 2, '李工', '王师傅', '2026-09-07 14:00:00', '2026-09-08 17:30:00', '更换原厂卡扣，拉力测试合格，设备恢复使用', '复用前通电试机：卡扣开合顺畅、锁紧牢固，承重测试无松动，可恢复使用', '2026-09-08 17:15:00'),
+('RP202609080001', 2, 1, 4, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', 0, '张工', NULL, NULL, NULL, NULL, NULL, NULL);
 
 INSERT INTO spot_check_record (spot_check_no, equipment_id, area_id, check_date, temperature, qualified, abnormal_desc, photo_url, inspector, remark) VALUES
 ('SC202609100001', 3, 5, '2026-09-10', 45.50, 1, NULL, 'https://example.com/photos/eq003-ok.jpg', '赵值班', '开店后2小时实测'),
