@@ -38,6 +38,27 @@ public class AreaService {
                 .collect(Collectors.toSet());
     }
 
+    /**
+     * 解析台账可筛选的在用区域范围：不选区域时为全部在用区域；选择父区域时包含父级和下级在用母婴室。
+     * 停用区域即使挂在父级下也不会进入结果；选择不存在的区域时明确报错，避免退化成全量查询造成漏筛。
+     */
+    public Set<Long> resolveInUseScopeAreaIds(Long areaId) {
+        Set<Long> inUseAreaIds = areaRepository.findAllByStatus(1).stream()
+                .map(Area::getId)
+                .collect(Collectors.toSet());
+        if (areaId == null) {
+            return inUseAreaIds;
+        }
+
+        Set<Long> scopeAreaIds = resolveScopeAreaIds(areaId);
+        if (scopeAreaIds == null) {
+            throw new RuntimeException("所选母婴室区域不存在，请刷新区域列表后重试");
+        }
+        return scopeAreaIds.stream()
+                .filter(inUseAreaIds::contains)
+                .collect(Collectors.toSet());
+    }
+
     public List<AreaDTO> getAllAreas() {
         return areaRepository.findAll().stream()
                 .map(this::convertToDTO)

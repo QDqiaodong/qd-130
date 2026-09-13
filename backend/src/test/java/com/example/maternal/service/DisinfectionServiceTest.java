@@ -26,8 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,7 +35,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class DisinfectionServiceTest {
 
+    private static final Long AREA_PARENT_ID = 1L;
     private static final Long AREA_A1_ID = 4L;
+    private static final Long AREA_A2_ID = 5L;
+    private static final Long AREA_A3_DISABLED_ID = 8L;
+    private static final Long AREA_B1_ID = 6L;
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 12);
 
     @Mock
@@ -56,7 +60,7 @@ class DisinfectionServiceTest {
         room.setId(AREA_A1_ID);
         room.setName("A1母婴室");
         room.setStatus(1);
-        when(areaRepository.findById(AREA_A1_ID)).thenReturn(Optional.of(room));
+        lenient().when(areaRepository.findById(AREA_A1_ID)).thenReturn(Optional.of(room));
     }
 
     private DisinfectionRecordRequest baseRequest() {
@@ -82,6 +86,23 @@ class DisinfectionServiceTest {
         record.setVentilationDone(request.getVentilationDone());
         record.setClosedLoop(closedLoop);
         record.setIncompleteReason(request.getIncompleteReason());
+        return record;
+    }
+
+    private DisinfectionRecord record(Long id, Long areaId, LocalDate date, boolean closedLoop) {
+        DisinfectionRecord record = new DisinfectionRecord();
+        record.setId(id);
+        record.setDisinfectionNo("DS" + date.toString().replace("-", "") + String.format("%04d", id));
+        record.setAreaId(areaId);
+        record.setDisinfectDate(date);
+        record.setOperator("赵值班");
+        record.setFinishTime(date.atTime(9, 30));
+        record.setDisinfectant("84消毒液（1:100）");
+        record.setVentilationDone(closedLoop);
+        record.setClosedLoop(closedLoop);
+        if (!closedLoop) {
+            record.setIncompleteReason("排风扇故障");
+        }
         return record;
     }
 
@@ -209,34 +230,55 @@ class DisinfectionServiceTest {
     }
 
     @Test
-    @DisplayName("列表按区域范围过滤，能否再登记按当日闭环记录同源计算")
-    void getDisinfections_scopeAndCanRegisterAgain() {
-        DisinfectionRecordRequest request = baseRequest();
-        DisinfectionRecord closed = savedRecord(request, true);
-        closed.setId(1L);
+    @DisplayName("选择父区域时带出下级在用母婴室，停用室和范围外区域不会混入；能否再登记与闭环标记同源")
+    void getDisinfections_parentScopeIncludesActiveChildrenOnly() {
+        DisinfectionRecord parentClosed = record(1L, AREA_PARENT_ID, TODAY, true);
+        DisinfectionRecord a1Open = record(2L, AREA_A1_ID, TODAY, false);
+        DisinfectionRecord a2Closed = record(3L, AREA_A2_ID, TODAY, true);
+        DisinfectionRecord disabledOpen = record(4L, AREA_A3_DISABLED_ID, TODAY, false);
+        DisinfectionRecord outsideClosed = record(5L, AREA_B1_ID, TODAY, true);
 
-        DisinfectionRecordRequest otherDay = baseRequest();
-        otherDay.setDisinfectDate(TODAY.minusDays(1));
-        otherDay.setVentilationDone(false);
-        otherDay.setIncompleteReason("排风扇故障");
-        DisinfectionRecord open = savedRecord(otherDay, false);
-        open.setId(2L);
-
-        when(areaService.resolveScopeAreaIds(AREA_A1_ID)).thenReturn(Set.of(AREA_A1_ID));
-        when(disinfectionRecordRepository.findByFilter(isNull(), isNull(), anyLong(), isNull()))
-                .thenReturn(List.of(closed, open));
+        when(areaService.resolveInUseScopeAreaIds(AREA_PARENT_ID))
+                .thenReturn(Set.of(AREA_PARENT_ID, AREA_A1_ID, AREA_A2_ID));
+        when(disinfectionRecordRepository.findByFilter(isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(List.of(parentClosed, a1Open, a2Closed, disabledOpen, outsideClosed));
         when(disinfectionRecordRepository.findByFilter(isNull(), isNull(), isNull(), anyBoolean()))
-                .thenReturn(List.of(closed));
+                .thenReturn(List.of(parentClosed, a2Closed, outsideClosed));
 
-        List<DisinfectionRecordDTO> result = disinfectionService.getDisinfections(null, null, AREA_A1_ID, null);
+        List<DisinfectionRecordDTO> result =
+                disinfectionService.getDisinfections(null, null, AREA_PARENT_ID, null);
 
-        assertThat(result).hasSize(2);
-        DisinfectionRecordDTO closedDto = result.get(0);
-        DisinfectionRecordDTO openDto = result.get(1);
-        assertThat(closedDto.getClosedLoop()).isTrue();
-        assertThat(closedDto.getCanRegisterAgain()).isFalse();
-        assertThat(openDto.getClosedLoop()).isFalse();
-        assertThat(openDto.getIncompleteReason()).isEqualTo("排风扇故障");
-        assertThat(openDto.getCanRegisterAgain()).isTrue();
+        verify(disinfectionRecordRepository)
+                .findByFilter(isNull(), isNull(), isNull(), isNull());
+        verify(disinfectionRecordRepository)
+                .findByFilter(isNull(), isNull(), isNull(), anyBoolean());
+
+        assertThat(result).extracting(DisinfectionRecordDTO::getAreaId)
+                .containsExactly(AREA_PARENT_ID, AREA_A1_ID, AREA_A2_ID)
+                .doesNotContain(AREA_A3_DISABLED_ID, AREA_B1_ID);
+        assertThat(result).filteredOn(dto -> dto.getAreaId().equals(AREA_PARENT_ID))
+                .singleElement()
+                .extracting(DisinfectionRecordDTO::getCanRegisterAgain)
+                .isEqualTo(false);
+        assertThat(result).filteredOn(dto -> dto.getAreaId().equals(AREA_A1_ID))
+                .singleElement()
+                .extracting(DisinfectionRecordDTO::getClosedLoop, DisinfectionRecordDTO::getCanRegisterAgain)
+                .containsExactly(false, true);
+        assertThat(result).filteredOn(dto -> dto.getAreaId().equals(AREA_A2_ID))
+                .singleElement()
+                .extracting(DisinfectionRecordDTO::getClosedLoop, DisinfectionRecordDTO::getCanRegisterAgain)
+                .containsExactly(true, false);
+    }
+
+    @Test
+    @DisplayName("选择不存在区域时拒绝查询，避免漏筛成全部区域")
+    void getDisinfections_missingScope_rejected() {
+        when(areaService.resolveInUseScopeAreaIds(999L))
+                .thenThrow(new RuntimeException("所选母婴室区域不存在，请刷新区域列表后重试"));
+
+        assertThatThrownBy(() -> disinfectionService.getDisinfections(null, null, 999L, null))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("区域不存在");
+        verify(disinfectionRecordRepository, never()).findByFilter(any(), any(), any(), any());
     }
 }

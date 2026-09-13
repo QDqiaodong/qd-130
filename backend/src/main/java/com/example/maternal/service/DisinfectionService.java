@@ -88,18 +88,19 @@ public class DisinfectionService {
 
     public List<DisinfectionRecordDTO> getDisinfections(LocalDate startDate, LocalDate endDate,
                                                         Long areaId, Boolean closedLoop) {
-        Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
-        List<DisinfectionRecord> records = disinfectionRecordRepository.findByFilter(
-                startDate, endDate, areaId, closedLoop);
-        if (scopeAreaIds != null) {
-            records = records.stream()
-                    .filter(r -> scopeAreaIds.contains(r.getAreaId()))
-                    .collect(Collectors.toList());
-        }
+        Set<Long> scopeAreaIds = areaService.resolveInUseScopeAreaIds(areaId);
 
-        // 能否再登记与闭环标记同源计算：同一母婴室当天已存在闭环记录则不可再登记
+        // 先按日期/闭环状态取候选记录，再由服务端按「父区域 + 下级在用母婴室」统一过滤。
+        // 不能把 areaId 直接下传为精确匹配，否则选择父区域时会漏掉 A1/A2 等下级室。
+        List<DisinfectionRecord> records = disinfectionRecordRepository.findByFilter(
+                startDate, endDate, null, closedLoop).stream()
+                .filter(r -> scopeAreaIds.contains(r.getAreaId()))
+                .collect(Collectors.toList());
+
+        // 能否再登记只看当前筛选范围和日期内的闭环记录，确保刷新后与闭环标记同源、口径一致。
         Set<String> closedKeys = disinfectionRecordRepository
                 .findByFilter(startDate, endDate, null, true).stream()
+                .filter(r -> scopeAreaIds.contains(r.getAreaId()))
                 .map(r -> closedKey(r.getAreaId(), r.getDisinfectDate()))
                 .collect(Collectors.toSet());
 

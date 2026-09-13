@@ -15,8 +15,8 @@
         <input type="date" v-model="filters.endDate" />
 
         <label class="filter-label">母婴室</label>
-        <select v-model="filters.areaId">
-          <option value="">全部母婴室</option>
+        <select v-model="filters.areaId" :disabled="areasLoading">
+          <option value="">{{ areasLoading ? '母婴室加载中...' : '全部在用母婴室' }}</option>
           <option v-for="area in areaOptions" :key="area.id" :value="area.id">{{ area.name }}</option>
         </select>
 
@@ -30,6 +30,12 @@
         <button class="btn-reset" @click="handleReset">重置</button>
       </div>
       <p v-if="filterError" class="filter-error">{{ filterError }}</p>
+      <p v-if="areaError" class="filter-error">
+        {{ areaError }}
+        <button class="inline-retry" type="button" :disabled="areasLoading" @click="loadAreas">
+          {{ areasLoading ? '重试中...' : '重试' }}
+        </button>
+      </p>
     </div>
 
     <div v-if="loadError" class="load-banner error">
@@ -37,6 +43,11 @@
       <button class="btn-retry" :disabled="loading" @click="loadDisinfections">
         {{ loading ? '加载中...' : '重试' }}
       </button>
+    </div>
+
+    <div v-if="!loadError && !loading && disinfectionList.length === 0" class="empty-banner">
+      <span>当前筛选条件下暂无消毒登记记录</span>
+      <button type="button" class="empty-reset" @click="handleReset">清空筛选条件</button>
     </div>
 
     <table class="disinfection-table">
@@ -85,9 +96,6 @@
             <span v-else class="no-action">-</span>
           </td>
         </tr>
-        <tr v-if="!loadError && disinfectionList.length === 0">
-          <td colspan="11" class="empty">{{ loading ? '加载中...' : '当前筛选条件下暂无消毒登记记录' }}</td>
-        </tr>
       </tbody>
     </table>
 
@@ -106,7 +114,9 @@ const FILTER_STORAGE_KEY = 'disinfection.list.filters'
 const disinfectionList = ref([])
 const areaOptions = ref([])
 const loading = ref(false)
+const areasLoading = ref(false)
 const loadError = ref('')
+const areaError = ref('')
 const filterError = ref('')
 const formVisible = ref(false)
 const presetAreaId = ref('')
@@ -156,6 +166,12 @@ const loadDisinfections = async () => {
     disinfectionList.value = []
     return
   }
+  if (filters.value.areaId !== '' && areaOptions.value.length > 0
+      && !areaOptions.value.some(area => String(area.id) === String(filters.value.areaId))) {
+    filterError.value = '所选母婴室不存在或已停用，请重新选择区域'
+    disinfectionList.value = []
+    return
+  }
   loading.value = true
   loadError.value = ''
   try {
@@ -167,11 +183,16 @@ const loadDisinfections = async () => {
 
     const res = await disinfectionApi.getDisinfections(params)
     if (res.data.code === 200) {
-      disinfectionList.value = res.data.data
+      disinfectionList.value = res.data.data || []
+      if (disinfectionList.value.length === 0) {
+        loadError.value = ''
+      }
     } else {
+      disinfectionList.value = []
       loadError.value = res.data.message || '加载消毒登记记录失败，请稍后重试'
     }
   } catch (error) {
+    disinfectionList.value = []
     loadError.value = error.response?.data?.message || '接口请求失败，消毒登记记录加载失败，请稍后重试'
     console.error('加载消毒登记记录失败:', error)
   } finally {
@@ -180,16 +201,27 @@ const loadDisinfections = async () => {
 }
 
 const loadAreas = async () => {
+  areasLoading.value = true
+  areaError.value = ''
   try {
     const res = await areaApi.getAllAreas()
     if (res.data.code === 200) {
-      areaOptions.value = res.data.data.filter(a => a.status === 1)
+      areaOptions.value = (res.data.data || []).filter(a => a.status === 1)
+      if (filters.value.areaId !== ''
+          && !areaOptions.value.some(area => String(area.id) === String(filters.value.areaId))) {
+        filters.value.areaId = ''
+        filterError.value = '原筛选母婴室不存在或已停用，已切换为全部在用母婴室'
+      }
     } else {
-      alert(res.data.message || '加载母婴室列表失败')
+      areaOptions.value = []
+      areaError.value = res.data.message || '加载母婴室列表失败，请稍后重试'
     }
   } catch (error) {
-    alert(error.response?.data?.message || '加载母婴室列表失败，请稍后重试')
+    areaOptions.value = []
+    areaError.value = error.response?.data?.message || '接口请求失败，母婴室列表加载失败，请稍后重试'
     console.error('加载区域列表失败:', error)
+  } finally {
+    areasLoading.value = false
   }
 }
 
@@ -335,6 +367,26 @@ onMounted(() => {
   font-size: 13px;
 }
 
+.inline-retry {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 4px;
+  background: #409eff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.inline-retry:hover:not(:disabled) {
+  background: #66b1ff;
+}
+
+.inline-retry:disabled {
+  background: #a0cfff;
+  cursor: not-allowed;
+}
+
 .load-banner {
   display: flex;
   align-items: center;
@@ -445,9 +497,31 @@ onMounted(() => {
   color: #c0c4cc;
 }
 
-.empty {
-  text-align: center;
-  color: #999;
-  padding: 40px;
+.empty-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  color: #909399;
+  background: #fafafa;
+  font-size: 14px;
+}
+
+.empty-reset {
+  padding: 4px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.empty-reset:hover {
+  border-color: #409eff;
+  color: #409eff;
 }
 </style>
