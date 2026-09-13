@@ -58,6 +58,12 @@ public class CodeGenerator {
         return String.format("DS%s%04d", timestamp, sequence);
     }
 
+    public static String generateOpeningNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("OP%s%04d", timestamp, sequence);
+    }
+
     public static String generateHandoverNo() {
         String timestamp = LocalDateTime.now().format(FORMATTER);
         int sequence = COUNTER.incrementAndGet() % 10000;

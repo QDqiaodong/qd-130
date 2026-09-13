@@ -7,6 +7,7 @@ USE maternal_db;
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS spot_check_record;
 DROP TABLE IF EXISTS disinfection_record;
+DROP TABLE IF EXISTS room_opening_record;
 DROP TABLE IF EXISTS inspection_record;
 DROP TABLE IF EXISTS inspection_plan;
 DROP TABLE IF EXISTS transfer_record;
@@ -162,6 +163,25 @@ CREATE TABLE disinfection_record (
     INDEX idx_closed_loop (closed_loop)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室消毒登记表';
 
+CREATE TABLE room_opening_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '开放登记ID',
+    record_no VARCHAR(50) UNIQUE NOT NULL COMMENT '开放登记单号',
+    area_id BIGINT NOT NULL COMMENT '母婴室区域ID',
+    open_date DATE NOT NULL COMMENT '开放日期',
+    open_time DATETIME DEFAULT NULL COMMENT '当日开门时刻（临时关闭时为空）',
+    close_time DATETIME DEFAULT NULL COMMENT '当日关门时刻（临时关闭时为空）',
+    temporarily_closed TINYINT(1) NOT NULL COMMENT '是否临时关闭：0-正常开放，1-临时关闭',
+    close_reason VARCHAR(500) DEFAULT NULL COMMENT '临时关闭原因（临时关闭必填）',
+    remark VARCHAR(500) COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_room_open_date (area_id, open_date),
+    INDEX idx_record_no (record_no),
+    INDEX idx_area_id (area_id),
+    INDEX idx_open_date (open_date),
+    INDEX idx_temporarily_closed (temporarily_closed)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室开放日开关门登记表';
+
 CREATE TABLE repair_order (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '报修单ID',
     repair_no VARCHAR(50) UNIQUE NOT NULL COMMENT '报修单号',
@@ -238,3 +258,9 @@ INSERT INTO disinfection_record (disinfection_no, area_id, disinfect_date, opera
 ('DS202609110002', 5, '2026-09-11', '赵值班', '2026-09-11 09:50:00', '84消毒液（1:100）', 0, 0, '排风扇故障未能通风，已报物业检修', '通风恢复后需补登记闭环'),
 ('DS202609110003', 6, '2026-09-11', '钱值班', '2026-09-11 10:10:00', '季铵盐消毒液', 1, 1, NULL, NULL),
 ('DS202609110004', 5, '2026-09-11', '钱值班', '2026-09-11 16:40:00', '84消毒液（1:100）', 1, 1, NULL, '排风扇修复后补做通风，当日闭环');
+
+INSERT INTO room_opening_record (record_no, area_id, open_date, open_time, close_time, temporarily_closed, close_reason, remark) VALUES
+('OP202609130001', 4, '2026-09-13', '2026-09-13 08:00:00', '2026-09-13 22:00:00', 0, NULL, '正常开放'),
+('OP202609130002', 5, '2026-09-13', NULL, NULL, 1, '室内水管爆裂抢修，当日临时关闭，预计次日恢复', '已在门口张贴闭室告示'),
+('OP202609130003', 6, '2026-09-13', '2026-09-13 10:00:00', '2026-09-13 21:30:00', 0, NULL, NULL),
+('OP202609120001', 7, '2026-09-12', '2026-09-12 08:30:00', '2026-09-12 21:00:00', 0, NULL, '历史登记仅供回看');

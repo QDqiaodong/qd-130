@@ -82,4 +82,9 @@ export const disinfectionApi = {
   createDisinfection: (data) => api.post('/disinfections', data)
 }
 
+export const roomOpeningApi = {
+  getRoomOpenings: (params) => api.get('/room-openings', { params }),
+  createRoomOpening: (data) => api.post('/room-openings', data)
+}
+
 export default api
