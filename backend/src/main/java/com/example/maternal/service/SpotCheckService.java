@@ -5,6 +5,7 @@ import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.SpotCheckDetailDTO;
 import com.example.maternal.dto.SpotCheckRecordDTO;
 import com.example.maternal.dto.SpotCheckRecordRequest;
+import com.example.maternal.dto.SpotCheckReviewerRequest;
 import com.example.maternal.dto.TimelineItem;
 import com.example.maternal.entity.Equipment;
 import com.example.maternal.entity.SpotCheckRecord;
@@ -15,9 +16,11 @@ import com.example.maternal.repository.SpotCheckRecordRepository;
 import com.example.maternal.util.CodeGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -121,11 +124,19 @@ public class SpotCheckService {
         return dto;
     }
 
+    /**
+     * @param reviewStatus 是否已补复核人筛选：1-已补复核人，0-未补复核人（不合格且复核人未填，
+     *                     合格抽检无需复核不计入）；null 不过滤
+     */
     public List<SpotCheckRecordDTO> getSpotChecks(LocalDate startDate, LocalDate endDate,
-                                                  Long areaId, Boolean qualified, Integer repairStatus) {
+                                                  Long areaId, Boolean qualified, Integer repairStatus,
+                                                  Integer reviewStatus) {
+        if (reviewStatus != null && reviewStatus != 0 && reviewStatus != 1) {
+            throw new RuntimeException("复核人筛选条件不合法，只能选择全部、已补复核人或未补复核人");
+        }
         Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
         List<SpotCheckRecord> records = spotCheckRecordRepository.findByFilter(
-                startDate, endDate, areaId, qualified, repairStatus);
+                startDate, endDate, areaId, qualified, repairStatus, reviewStatus);
         if (scopeAreaIds != null) {
             records = records.stream()
                     .filter(r -> scopeAreaIds.contains(r.getAreaId()))
@@ -134,6 +145,33 @@ public class SpotCheckService {
         return records.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 补填当班复核人：仅不合格抽检需要复核人，补填后才允许转报修；已补填过的记录不允许重复提交。
+     */
+    @Transactional
+    public SpotCheckRecordDTO updateReviewer(Long id, SpotCheckReviewerRequest request) {
+        SpotCheckRecord record = spotCheckRecordRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("抽检记录不存在"));
+
+        if (Boolean.TRUE.equals(record.getQualified())) {
+            throw new RuntimeException("合格抽检无需补填当班复核人");
+        }
+        if (record.getReviewer() != null && !record.getReviewer().trim().isEmpty()) {
+            throw new RuntimeException("该抽检已补填当班复核人，请勿重复提交");
+        }
+        if (request == null || request.getReviewer() == null || request.getReviewer().trim().isEmpty()) {
+            throw new RuntimeException("当班复核人不能为空");
+        }
+        String reviewer = request.getReviewer().trim();
+        if (reviewer.length() > 50) {
+            throw new RuntimeException("当班复核人姓名不能超过50字");
+        }
+
+        record.setReviewer(reviewer);
+        record.setReviewTime(LocalDateTime.now());
+        return convertToDTO(spotCheckRecordRepository.save(record));
     }
 
     public SpotCheckDetailDTO getSpotCheckDetail(Long id) {
@@ -152,6 +190,14 @@ public class SpotCheckService {
                         + (Boolean.TRUE.equals(record.getQualified()) ? "合格" : "不合格")
                         + (record.getInspector() != null ? "，抽检人：" + record.getInspector() : ""),
                 "spotcheck"));
+
+        if (record.getReviewer() != null && !record.getReviewer().trim().isEmpty()) {
+            timeline.add(new TimelineItem(
+                    record.getReviewTime() != null ? record.getReviewTime() : record.getUpdatedAt(),
+                    "补填当班复核人",
+                    "当班复核人：" + record.getReviewer() + "，复核后可转报修",
+                    "review"));
+        }
 
         repairOrderRepository.findBySpotCheckId(record.getId()).ifPresent(order -> {
             RepairOrderDTO repairDTO = repairOrderService.getRepairById(order.getId());
@@ -202,6 +248,8 @@ public class SpotCheckService {
         dto.setAbnormalDesc(record.getAbnormalDesc());
         dto.setPhotoUrl(record.getPhotoUrl());
         dto.setInspector(record.getInspector());
+        dto.setReviewer(record.getReviewer());
+        dto.setReviewTime(record.getReviewTime());
         dto.setRemark(record.getRemark());
         dto.setCreatedAt(record.getCreatedAt());
 

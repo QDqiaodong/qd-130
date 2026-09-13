@@ -6,6 +6,7 @@ import com.example.maternal.dto.RepairOrderDTO;
 import com.example.maternal.dto.SpotCheckDetailDTO;
 import com.example.maternal.dto.SpotCheckRecordDTO;
 import com.example.maternal.dto.SpotCheckRecordRequest;
+import com.example.maternal.dto.SpotCheckReviewerRequest;
 import com.example.maternal.service.RepairOrderService;
 import com.example.maternal.service.SpotCheckService;
 import lombok.RequiredArgsConstructor;
@@ -29,9 +30,10 @@ public class SpotCheckController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long areaId,
             @RequestParam(required = false) Boolean qualified,
-            @RequestParam(required = false) Integer repairStatus) {
+            @RequestParam(required = false) Integer repairStatus,
+            @RequestParam(required = false) Integer reviewStatus) {
         return ApiResponse.success(spotCheckService
-                .getSpotChecks(startDate, endDate, areaId, qualified, repairStatus));
+                .getSpotChecks(startDate, endDate, areaId, qualified, repairStatus, reviewStatus));
     }
 
     @GetMapping("/{id}")
@@ -46,6 +48,13 @@ public class SpotCheckController {
     @PostMapping
     public ApiResponse<SpotCheckRecordDTO> createSpotCheck(@RequestBody SpotCheckRecordRequest request) {
         return ApiResponse.success("抽检记录登记成功", spotCheckService.createSpotCheck(request));
+    }
+
+    /** 不合格抽检补填当班复核人，补填后才允许转报修 */
+    @PutMapping("/{id}/reviewer")
+    public ApiResponse<SpotCheckRecordDTO> updateReviewer(@PathVariable Long id,
+                                                          @RequestBody SpotCheckReviewerRequest request) {
+        return ApiResponse.success("当班复核人补填成功", spotCheckService.updateReviewer(id, request));
     }
 
     /** 不合格抽检一键补报修 */

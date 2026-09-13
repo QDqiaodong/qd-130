@@ -63,6 +63,7 @@ class SpotCheckRepairServiceTest {
         record.setQualified(false);
         record.setAbnormalDesc("抽检温度55.20℃，不在合格区间40.00~50.00℃");
         record.setInspector("赵值班");
+        record.setReviewer("钱复核");
         return record;
     }
 
@@ -106,6 +107,34 @@ class SpotCheckRepairServiceTest {
         assertThatThrownBy(() -> repairOrderService.createRepairOrderFromSpotCheck(SPOT_CHECK_ID, "赵值班"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("仅抽检结论为不合格的记录才能创建报修单");
+
+        verify(repairOrderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("不合格抽检未补填当班复核人时不能转报修")
+    void createRepairFromSpotCheck_missingReviewer_rejected() {
+        SpotCheckRecord record = unqualifiedRecord();
+        record.setReviewer(null);
+        when(spotCheckRecordRepository.findById(SPOT_CHECK_ID)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> repairOrderService.createRepairOrderFromSpotCheck(SPOT_CHECK_ID, "赵值班"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("尚未补填当班复核人");
+
+        verify(repairOrderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("复核人仅填空白字符视为未补填，同样不能转报修")
+    void createRepairFromSpotCheck_blankReviewer_rejected() {
+        SpotCheckRecord record = unqualifiedRecord();
+        record.setReviewer("   ");
+        when(spotCheckRecordRepository.findById(SPOT_CHECK_ID)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> repairOrderService.createRepairOrderFromSpotCheck(SPOT_CHECK_ID, "赵值班"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("尚未补填当班复核人");
 
         verify(repairOrderRepository, never()).save(any());
     }

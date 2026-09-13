@@ -53,6 +53,14 @@ public class SpotCheckRecord {
     @Column(name = "inspector", length = 50)
     private String inspector;
 
+    /** 当班复核人：抽检判不合格后必须补填，补填后才允许转报修 */
+    @Column(name = "reviewer", length = 50)
+    private String reviewer;
+
+    /** 补填当班复核人的时间 */
+    @Column(name = "review_time")
+    private LocalDateTime reviewTime;
+
     @Column(name = "remark", length = 500)
     private String remark;
 

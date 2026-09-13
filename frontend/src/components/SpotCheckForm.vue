@@ -222,7 +222,7 @@ const handleSubmit = async () => {
     if (res.data.code === 200) {
       const dto = res.data.data
       if (dto && dto.repairMessage) {
-        alert(`抽检记录已登记为不合格，但报修单未创建：${dto.repairMessage}\n请在列表中点击「去补报修」手动补录。`)
+        alert(`抽检记录已登记为不合格，但报修单未创建：${dto.repairMessage}\n请在列表中补填当班复核人后点击「去补报修」手动补录。`)
       }
       emit('success')
       handleClose()

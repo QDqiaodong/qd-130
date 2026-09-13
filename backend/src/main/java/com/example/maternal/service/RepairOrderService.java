@@ -149,7 +149,8 @@ public class RepairOrderService {
     }
 
     /**
-     * 温奶器抽检不合格一键补报修：抽检结论必须为不合格，同一抽检记录/设备不得重复创建进行中的报修单。
+     * 温奶器抽检不合格一键补报修：抽检结论必须为不合格且已补填当班复核人，
+     * 同一抽检记录/设备不得重复创建进行中的报修单。
      */
     @Transactional
     public RepairOrderDTO createRepairOrderFromSpotCheck(Long spotCheckId, String reporter) {
@@ -158,6 +159,11 @@ public class RepairOrderService {
 
         if (Boolean.TRUE.equals(record.getQualified())) {
             throw new RuntimeException("仅抽检结论为不合格的记录才能创建报修单");
+        }
+
+        // 不合格抽检须先补填当班复核人，未补复核人不能转报修
+        if (record.getReviewer() == null || record.getReviewer().trim().isEmpty()) {
+            throw new RuntimeException("该不合格抽检尚未补填当班复核人，请先补填复核人后再转报修");
         }
 
         if (repairOrderRepository.existsBySpotCheckId(spotCheckId)) {

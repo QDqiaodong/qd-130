@@ -35,6 +35,12 @@
           <option value="2">已恢复</option>
         </select>
 
+        <select v-model="filters.reviewStatus">
+          <option value="">全部复核情况</option>
+          <option value="1">已补复核人</option>
+          <option value="0">未补复核人</option>
+        </select>
+
         <button class="btn-filter" @click="applyFilters">筛选</button>
         <button class="btn-reset" @click="handleReset">重置</button>
       </div>
@@ -60,6 +66,7 @@
           <th>照片</th>
           <th>报修状态</th>
           <th>抽检人</th>
+          <th>当班复核人</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -89,20 +96,31 @@
           </td>
           <td>{{ record.inspector || '-' }}</td>
           <td>
+            <span v-if="record.reviewer">{{ record.reviewer }}</span>
+            <span v-else-if="record.qualified === false" class="review-missing">未补复核人</span>
+            <span v-else class="no-repair">-</span>
+          </td>
+          <td>
             <button class="btn-detail" @click="handleDetail(record)">详情</button>
-            <button v-if="record.qualified === false && !record.repairOrderId"
-                    class="btn-repair" @click="handleCreateRepair(record)">去补报修</button>
+            <template v-if="record.qualified === false && !record.repairOrderId">
+              <button v-if="!record.reviewer" class="btn-review"
+                      @click="handleFillReviewer(record)">补复核人</button>
+              <button v-else class="btn-repair" @click="handleCreateRepair(record)">去补报修</button>
+            </template>
           </td>
         </tr>
         <tr v-if="!loadError && spotCheckList.length === 0">
-          <td colspan="10" class="empty">{{ loading ? '加载中...' : '当前筛选条件下暂无抽检记录' }}</td>
+          <td colspan="11" class="empty">{{ loading ? '加载中...' : '当前筛选条件下暂无抽检记录' }}</td>
         </tr>
       </tbody>
     </table>
 
     <SpotCheckForm :visible="formVisible" @close="formVisible = false" @success="handleFormSuccess" />
     <SpotCheckDetail :visible="detailVisible" :spot-check-id="detailId"
-                     @close="detailVisible = false" @repair-created="loadSpotChecks" />
+                     @close="detailVisible = false" @repair-created="loadSpotChecks"
+                     @reviewed="loadSpotChecks" />
+    <SpotCheckReview :visible="reviewVisible" :record="reviewTarget"
+                     @close="reviewVisible = false" @reviewed="handleReviewed" />
   </div>
 </template>
 
@@ -111,6 +129,7 @@ import { ref, onMounted } from 'vue'
 import { spotCheckApi, areaApi } from '../api'
 import SpotCheckForm from './SpotCheckForm.vue'
 import SpotCheckDetail from './SpotCheckDetail.vue'
+import SpotCheckReview from './SpotCheckReview.vue'
 
 const FILTER_STORAGE_KEY = 'spotcheck.list.filters'
 
@@ -122,13 +141,16 @@ const filterError = ref('')
 const formVisible = ref(false)
 const detailVisible = ref(false)
 const detailId = ref(null)
+const reviewVisible = ref(false)
+const reviewTarget = ref(null)
 
 const defaultFilters = () => ({
   startDate: '',
   endDate: '',
   areaId: '',
   qualified: '',
-  repairStatus: ''
+  repairStatus: '',
+  reviewStatus: ''
 })
 
 const loadSavedFilters = () => {
@@ -177,6 +199,7 @@ const loadSpotChecks = async () => {
     if (filters.value.areaId !== '') params.areaId = filters.value.areaId
     if (filters.value.qualified !== '') params.qualified = filters.value.qualified
     if (filters.value.repairStatus !== '') params.repairStatus = filters.value.repairStatus
+    if (filters.value.reviewStatus !== '') params.reviewStatus = filters.value.reviewStatus
 
     const res = await spotCheckApi.getSpotChecks(params)
     if (res.data.code === 200) {
@@ -222,7 +245,20 @@ const handleDetail = (record) => {
   detailVisible.value = true
 }
 
+const handleFillReviewer = (record) => {
+  reviewTarget.value = record
+  reviewVisible.value = true
+}
+
+const handleReviewed = () => {
+  loadSpotChecks()
+}
+
 const handleCreateRepair = async (record) => {
+  if (!record.reviewer) {
+    alert('该不合格抽检尚未补填当班复核人，请先点击「补复核人」补填后再转报修')
+    return
+  }
   if (!confirm(`确定为温奶器「${record.equipmentName}（${record.equipmentNo}）」补提报修单吗？维修期间设备不可调配。`)) return
   try {
     const res = await spotCheckApi.createRepair(record.id, { reporter: record.inspector })
@@ -481,6 +517,19 @@ onMounted(() => {
 .btn-repair {
   background: #e6a23c;
   color: #fff;
+}
+
+.btn-review {
+  background: #f56c6c;
+  color: #fff;
+}
+
+.review-missing {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fef0f0;
+  color: #f56c6c;
 }
 
 .empty {

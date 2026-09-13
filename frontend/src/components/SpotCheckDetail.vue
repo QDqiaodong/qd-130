@@ -31,6 +31,12 @@
             </div>
             <div class="info-item"><span class="label">抽检人:</span><span>{{ detail.record.inspector || '-' }}</span></div>
             <div class="info-item">
+              <span class="label">当班复核人:</span>
+              <span v-if="detail.record.reviewer">{{ detail.record.reviewer }}</span>
+              <span v-else-if="!detail.record.qualified" class="review-missing">未补复核人</span>
+              <span v-else>-</span>
+            </div>
+            <div class="info-item">
               <span class="label">温奶器:</span>
               <span>{{ detail.record.equipmentName }}（{{ detail.record.equipmentNo }}）</span>
             </div>
@@ -69,10 +75,16 @@
           </div>
           <p v-else-if="detail.record.qualified" class="empty-line">合格抽检无需报修</p>
           <div v-else class="no-repair-box">
-            <span>该抽检不合格且尚未报修</span>
-            <button class="btn-repair-inline" :disabled="repairing" @click="handleCreateRepair">
-              {{ repairing ? '提交中...' : '去补报修' }}
-            </button>
+            <template v-if="!detail.record.reviewer">
+              <span>该抽检不合格且尚未报修，需先补填当班复核人才能转报修</span>
+              <button class="btn-review-inline" @click="reviewVisible = true">补复核人</button>
+            </template>
+            <template v-else>
+              <span>该抽检不合格且尚未报修</span>
+              <button class="btn-repair-inline" :disabled="repairing" @click="handleCreateRepair">
+                {{ repairing ? '提交中...' : '去补报修' }}
+              </button>
+            </template>
           </div>
         </div>
 
@@ -92,24 +104,28 @@
         </div>
       </div>
     </div>
+    <SpotCheckReview :visible="reviewVisible" :record="detail && detail.record"
+                     @close="reviewVisible = false" @reviewed="handleReviewed" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue'
 import { spotCheckApi } from '../api'
+import SpotCheckReview from './SpotCheckReview.vue'
 
 const props = defineProps({
   visible: Boolean,
   spotCheckId: Number
 })
 
-const emit = defineEmits(['close', 'repair-created'])
+const emit = defineEmits(['close', 'repair-created', 'reviewed'])
 
 const detail = ref(null)
 const photoError = ref(false)
 const loadError = ref('')
 const repairing = ref(false)
+const reviewVisible = ref(false)
 
 const loadDetail = async () => {
   if (!props.spotCheckId) return
@@ -129,6 +145,10 @@ const loadDetail = async () => {
 
 const handleCreateRepair = async () => {
   if (repairing.value || !detail.value) return
+  if (!detail.value.record.reviewer) {
+    alert('该不合格抽检尚未补填当班复核人，请先补填复核人后再转报修')
+    return
+  }
   repairing.value = true
   try {
     const res = await spotCheckApi.createRepair(detail.value.record.id, {
@@ -146,6 +166,11 @@ const handleCreateRepair = async () => {
   } finally {
     repairing.value = false
   }
+}
+
+const handleReviewed = async () => {
+  emit('reviewed')
+  await loadDetail()
 }
 
 const repairStatusText = (status) => {
@@ -171,6 +196,7 @@ const handleClose = () => {
   detail.value = null
   photoError.value = false
   loadError.value = ''
+  reviewVisible.value = false
   emit('close')
 }
 
@@ -348,6 +374,24 @@ watch(() => props.visible, (val) => {
   cursor: not-allowed;
 }
 
+.btn-review-inline {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 4px;
+  background: #f56c6c;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.review-missing {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
 .photo-preview {
   margin-top: 12px;
 }
@@ -399,6 +443,10 @@ watch(() => props.visible, (val) => {
 
 .timeline-dot.spotcheck {
   background: #f56c6c;
+}
+
+.timeline-dot.review {
+  background: #67c23a;
 }
 
 .timeline-dot.inspection {

@@ -70,6 +70,7 @@ export const spotCheckApi = {
   getSpotChecks: (params) => api.get('/spot-checks', { params }),
   getSpotCheckDetail: (id) => api.get(`/spot-checks/${id}`),
   createSpotCheck: (data) => api.post('/spot-checks', data),
+  updateReviewer: (id, data) => api.put(`/spot-checks/${id}/reviewer`, data),
   createRepair: (id, data) => api.post(`/spot-checks/${id}/repair`, data || {})
 }
 

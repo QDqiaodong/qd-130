@@ -36,6 +36,11 @@ public class SpotCheckRecordDTO {
 
     private String inspector;
 
+    /** 当班复核人：不合格抽检补填后才允许转报修 */
+    private String reviewer;
+
+    private LocalDateTime reviewTime;
+
     private String remark;
 
     private Long repairOrderId;

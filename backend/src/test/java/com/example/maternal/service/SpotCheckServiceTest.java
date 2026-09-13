@@ -232,12 +232,32 @@ class SpotCheckServiceTest {
     void getSpotChecks_areaFilter_appliesScope() {
         when(areaService.resolveScopeAreaIds(AREA_A_ID))
                 .thenReturn(java.util.Set.of(AREA_A_ID, 4L, 5L));
-        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any()))
+        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), any()))
                 .thenReturn(java.util.List.of());
 
-        var result = spotCheckService.getSpotChecks(null, null, AREA_A_ID, null, null);
+        var result = spotCheckService.getSpotChecks(null, null, AREA_A_ID, null, null, null);
 
         assertThat(result).isEmpty();
         verify(areaService).resolveScopeAreaIds(AREA_A_ID);
+    }
+
+    @Test
+    @DisplayName("复核人筛选条件只接受0或1，非法值给出明确提示")
+    void getSpotChecks_invalidReviewStatus_rejected() {
+        assertThatThrownBy(() -> spotCheckService.getSpotChecks(null, null, null, null, null, 2))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("复核人筛选条件不合法");
+    }
+
+    @Test
+    @DisplayName("复核人筛选条件透传到查询：已补复核人按1过滤")
+    void getSpotChecks_reviewStatusPassedThrough() {
+        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(1)))
+                .thenReturn(java.util.List.of());
+
+        var result = spotCheckService.getSpotChecks(null, null, null, null, null, 1);
+
+        assertThat(result).isEmpty();
+        verify(spotCheckRecordRepository).findByFilter(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(1));
     }
 }
