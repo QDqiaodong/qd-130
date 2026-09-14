@@ -31,9 +31,10 @@ public class SpotCheckController {
             @RequestParam(required = false) Long areaId,
             @RequestParam(required = false) Boolean qualified,
             @RequestParam(required = false) Integer repairStatus,
-            @RequestParam(required = false) Integer reviewStatus) {
+            @RequestParam(required = false) Integer reviewStatus,
+            @RequestParam(required = false) String thermometerNo) {
         return ApiResponse.success(spotCheckService
-                .getSpotChecks(startDate, endDate, areaId, qualified, repairStatus, reviewStatus));
+                .getSpotChecks(startDate, endDate, areaId, qualified, repairStatus, reviewStatus, thermometerNo));
     }
 
     @GetMapping("/{id}")

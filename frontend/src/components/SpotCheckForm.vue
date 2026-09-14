@@ -47,6 +47,13 @@
           </div>
 
           <div class="form-group">
+            <label>体温枪编号: <span class="required">*</span></label>
+            <input type="text" v-model="form.thermometerNo" required maxlength="50"
+                   placeholder="请输入本次抽检使用的体温枪编号" />
+            <p class="field-tip">按本次实际使用的体温枪填写，留空将无法提交</p>
+          </div>
+
+          <div class="form-group">
             <label>抽检照片:</label>
             <input type="text" v-model="form.photoUrl" placeholder="请输入抽检照片URL（不合格时建议上传）" />
             <div v-if="form.photoUrl" class="photo-preview">
@@ -114,6 +121,7 @@ const defaultForm = () => ({
   equipmentId: '',
   checkDate: new Date().toISOString().split('T')[0],
   temperature: '',
+  thermometerNo: '',
   abnormalDesc: '',
   photoUrl: '',
   inspector: '',
@@ -199,6 +207,10 @@ const handleSubmit = async () => {
     alert('抽检温度不合法，请填写0~100℃之间的实测水温')
     return
   }
+  if (!form.value.thermometerNo.trim()) {
+    alert('请填写体温枪编号')
+    return
+  }
   if (!form.value.inspector.trim()) {
     alert('请填写抽检人')
     return
@@ -211,6 +223,7 @@ const handleSubmit = async () => {
       equipmentId: form.value.equipmentId,
       checkDate: form.value.checkDate,
       temperature: value,
+      thermometerNo: form.value.thermometerNo.trim(),
       abnormalDesc: !qualified ? form.value.abnormalDesc : null,
       photoUrl: form.value.photoUrl || null,
       inspector: form.value.inspector.trim(),

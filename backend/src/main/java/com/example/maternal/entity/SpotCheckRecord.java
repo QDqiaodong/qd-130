@@ -44,6 +44,10 @@ public class SpotCheckRecord {
     @Column(name = "qualified", nullable = false)
     private Boolean qualified;
 
+    /** 本次抽检所用体温枪编号：必填，服务端强制校验，按提交值原样落库，不允许沿用上一台记录 */
+    @Column(name = "thermometer_no", length = 50)
+    private String thermometerNo;
+
     @Column(name = "abnormal_desc", length = 500)
     private String abnormalDesc;
 

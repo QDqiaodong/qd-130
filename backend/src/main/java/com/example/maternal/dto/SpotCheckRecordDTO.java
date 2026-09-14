@@ -30,6 +30,9 @@ public class SpotCheckRecordDTO {
 
     private Boolean qualified;
 
+    /** 本次抽检所用体温枪编号 */
+    private String thermometerNo;
+
     private String abnormalDesc;
 
     private String photoUrl;

@@ -29,6 +29,7 @@
                 {{ detail.record.temperature }}℃
               </span>
             </div>
+            <div class="info-item"><span class="label">体温枪编号:</span><span>{{ detail.record.thermometerNo || '-' }}</span></div>
             <div class="info-item"><span class="label">抽检人:</span><span>{{ detail.record.inspector || '-' }}</span></div>
             <div class="info-item">
               <span class="label">当班复核人:</span>

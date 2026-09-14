@@ -131,6 +131,7 @@ CREATE TABLE spot_check_record (
     check_date DATE NOT NULL COMMENT '抽检日期',
     temperature DECIMAL(5,2) NOT NULL COMMENT '实测水温（℃）',
     qualified TINYINT(1) NOT NULL COMMENT '抽检结论：0-不合格，1-合格（按40~50℃区间判定）',
+    thermometer_no VARCHAR(50) COMMENT '本次抽检所用体温枪编号（必填，服务端强制校验）',
     abnormal_desc VARCHAR(500) COMMENT '不合格说明',
     photo_url VARCHAR(500) COMMENT '抽检照片地址',
     inspector VARCHAR(50) NOT NULL COMMENT '抽检人（值班人员）',
@@ -288,10 +289,10 @@ INSERT INTO repair_order (repair_no, inspection_id, equipment_id, area_id, fault
 ('RP202609070001', 1, 2, 4, '护理台安全带卡扣损坏，存在脱落风险', 'https://example.com/photos/eq002-buckle.jpg', 2, '李工', '王师傅', '2026-09-07 14:00:00', '2026-09-08 17:30:00', '更换原厂卡扣，拉力测试合格，设备恢复使用', '复用前通电试机：卡扣开合顺畅、锁紧牢固，承重测试无松动，可恢复使用', '2026-09-08 17:15:00'),
 ('RP202609080001', 2, 1, 4, '温奶器加热异常，指示灯不亮', 'https://example.com/photos/eq001-fault.jpg', 0, '张工', NULL, NULL, NULL, NULL, NULL, NULL);
 
-INSERT INTO spot_check_record (spot_check_no, equipment_id, area_id, check_date, temperature, qualified, abnormal_desc, photo_url, inspector, remark) VALUES
-('SC202609100001', 3, 5, '2026-09-10', 45.50, 1, NULL, 'https://example.com/photos/eq003-ok.jpg', '赵值班', '开店后2小时实测'),
-('SC202609100002', 5, 6, '2026-09-10', 55.20, 0, '抽检温度55.20℃，不在合格区间40.00~50.00℃；水温偏高，疑似温控失灵', 'https://example.com/photos/eq005-hot.jpg', '赵值班', '已现场断电'),
-('SC202609100003', 7, 7, '2026-09-10', 36.00, 0, '抽检温度36.00℃，不在合格区间40.00~50.00℃；温度偏低', 'https://example.com/photos/eq007-cold.jpg', '钱值班', NULL);
+INSERT INTO spot_check_record (spot_check_no, equipment_id, area_id, check_date, temperature, qualified, thermometer_no, abnormal_desc, photo_url, inspector, remark) VALUES
+('SC202609100001', 3, 5, '2026-09-10', 45.50, 1, 'TG-A01', NULL, 'https://example.com/photos/eq003-ok.jpg', '赵值班', '开店后2小时实测'),
+('SC202609100002', 5, 6, '2026-09-10', 55.20, 0, 'TG-B02', '抽检温度55.20℃，不在合格区间40.00~50.00℃；水温偏高，疑似温控失灵', 'https://example.com/photos/eq005-hot.jpg', '赵值班', '已现场断电'),
+('SC202609100003', 7, 7, '2026-09-10', 36.00, 0, 'TG-A01', '抽检温度36.00℃，不在合格区间40.00~50.00℃；温度偏低', 'https://example.com/photos/eq007-cold.jpg', '钱值班', NULL);
 
 INSERT INTO repair_order (repair_no, spot_check_id, equipment_id, area_id, fault_desc, photo_url, status, reporter, repairman, start_time, finish_time, repair_note) VALUES
 ('RP202609100001', 2, 5, 6, '抽检温度55.20℃，不在合格区间40.00~50.00℃；水温偏高，疑似温控失灵', 'https://example.com/photos/eq005-hot.jpg', 0, '赵值班', NULL, NULL, NULL, NULL);

@@ -27,12 +27,14 @@ public interface SpotCheckRecordRepository extends JpaRepository<SpotCheckRecord
             " ((:repairStatus = -1 AND ro.id IS NULL) OR (:repairStatus <> -1 AND ro.status = :repairStatus))) AND " +
             "(:reviewStatus IS NULL OR " +
             " ((:reviewStatus = 1 AND s.reviewer IS NOT NULL AND s.reviewer <> '') OR " +
-            "  (:reviewStatus = 0 AND s.qualified = false AND (s.reviewer IS NULL OR s.reviewer = '')))) " +
+            "  (:reviewStatus = 0 AND s.qualified = false AND (s.reviewer IS NULL OR s.reviewer = '')))) AND " +
+            "(:thermometerNo IS NULL OR s.thermometerNo = :thermometerNo) " +
             "ORDER BY s.checkDate DESC, s.id DESC")
     List<SpotCheckRecord> findByFilter(@Param("startDate") LocalDate startDate,
                                       @Param("endDate") LocalDate endDate,
                                       @Param("areaId") Long areaId,
                                       @Param("qualified") Boolean qualified,
                                       @Param("repairStatus") Integer repairStatus,
-                                      @Param("reviewStatus") Integer reviewStatus);
+                                      @Param("reviewStatus") Integer reviewStatus,
+                                      @Param("thermometerNo") String thermometerNo);
 }

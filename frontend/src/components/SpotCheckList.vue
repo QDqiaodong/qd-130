@@ -41,6 +41,9 @@
           <option value="0">未补复核人</option>
         </select>
 
+        <label class="filter-label">体温枪编号</label>
+        <input type="text" v-model="filters.thermometerNo" placeholder="按体温枪编号筛选" />
+
         <button class="btn-filter" @click="applyFilters">筛选</button>
         <button class="btn-reset" @click="handleReset">重置</button>
       </div>
@@ -62,6 +65,7 @@
           <th>母婴室</th>
           <th>抽检日</th>
           <th>实测水温</th>
+          <th>体温枪编号</th>
           <th>抽检结论</th>
           <th>照片</th>
           <th>报修状态</th>
@@ -78,6 +82,7 @@
           <td>{{ record.areaName || '-' }}</td>
           <td>{{ record.checkDate }}</td>
           <td :class="{ 'temp-bad': record.qualified === false }">{{ record.temperature }}℃</td>
+          <td>{{ record.thermometerNo || '-' }}</td>
           <td>
             <span :class="['result-tag', record.qualified ? 'normal' : 'abnormal']">
               {{ record.qualified ? '合格' : '不合格' }}
@@ -110,7 +115,7 @@
           </td>
         </tr>
         <tr v-if="!loadError && spotCheckList.length === 0">
-          <td colspan="11" class="empty">{{ loading ? '加载中...' : '当前筛选条件下暂无抽检记录' }}</td>
+          <td colspan="12" class="empty">{{ loading ? '加载中...' : '当前筛选条件下暂无抽检记录' }}</td>
         </tr>
       </tbody>
     </table>
@@ -150,7 +155,8 @@ const defaultFilters = () => ({
   areaId: '',
   qualified: '',
   repairStatus: '',
-  reviewStatus: ''
+  reviewStatus: '',
+  thermometerNo: ''
 })
 
 const loadSavedFilters = () => {
@@ -200,6 +206,8 @@ const loadSpotChecks = async () => {
     if (filters.value.qualified !== '') params.qualified = filters.value.qualified
     if (filters.value.repairStatus !== '') params.repairStatus = filters.value.repairStatus
     if (filters.value.reviewStatus !== '') params.reviewStatus = filters.value.reviewStatus
+    const thermometerNo = (filters.value.thermometerNo || '').trim()
+    if (thermometerNo !== '') params.thermometerNo = thermometerNo
 
     const res = await spotCheckApi.getSpotChecks(params)
     if (res.data.code === 200) {

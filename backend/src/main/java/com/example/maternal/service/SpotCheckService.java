@@ -69,6 +69,13 @@ public class SpotCheckService {
         if (request.getInspector() == null || request.getInspector().trim().isEmpty()) {
             throw new RuntimeException("抽检人不能为空");
         }
+        if (request.getThermometerNo() == null || request.getThermometerNo().trim().isEmpty()) {
+            throw new RuntimeException("体温枪编号不能为空");
+        }
+        String thermometerNo = request.getThermometerNo().trim();
+        if (thermometerNo.length() > 50) {
+            throw new RuntimeException("体温枪编号不能超过50字");
+        }
         if (request.getTemperature().compareTo(MIN_TEMP_LIMIT) < 0
                 || request.getTemperature().compareTo(MAX_TEMP_LIMIT) > 0) {
             throw new RuntimeException("抽检温度不合法，请填写0~100℃之间的实测水温");
@@ -99,6 +106,8 @@ public class SpotCheckService {
         record.setCheckDate(request.getCheckDate());
         record.setTemperature(request.getTemperature());
         record.setQualified(qualified);
+        // 体温枪编号按本次提交值原样落库，绝不从上一台记录补齐
+        record.setThermometerNo(thermometerNo);
         record.setAbnormalDesc(buildAbnormalDesc(qualified, request.getTemperature(), request.getAbnormalDesc()));
         record.setPhotoUrl(request.getPhotoUrl());
         record.setInspector(request.getInspector().trim());
@@ -127,16 +136,19 @@ public class SpotCheckService {
     /**
      * @param reviewStatus 是否已补复核人筛选：1-已补复核人，0-未补复核人（不合格且复核人未填，
      *                     合格抽检无需复核不计入）；null 不过滤
+     * @param thermometerNo 体温枪编号筛选：按编号精确匹配，空白视为不过滤
      */
     public List<SpotCheckRecordDTO> getSpotChecks(LocalDate startDate, LocalDate endDate,
                                                   Long areaId, Boolean qualified, Integer repairStatus,
-                                                  Integer reviewStatus) {
+                                                  Integer reviewStatus, String thermometerNo) {
         if (reviewStatus != null && reviewStatus != 0 && reviewStatus != 1) {
             throw new RuntimeException("复核人筛选条件不合法，只能选择全部、已补复核人或未补复核人");
         }
+        String thermometerNoFilter = thermometerNo != null && !thermometerNo.trim().isEmpty()
+                ? thermometerNo.trim() : null;
         Set<Long> scopeAreaIds = areaService.resolveScopeAreaIds(areaId);
         List<SpotCheckRecord> records = spotCheckRecordRepository.findByFilter(
-                startDate, endDate, areaId, qualified, repairStatus, reviewStatus);
+                startDate, endDate, areaId, qualified, repairStatus, reviewStatus, thermometerNoFilter);
         if (scopeAreaIds != null) {
             records = records.stream()
                     .filter(r -> scopeAreaIds.contains(r.getAreaId()))
@@ -188,7 +200,8 @@ public class SpotCheckService {
                 "抽检单号 " + record.getSpotCheckNo()
                         + "，实测水温：" + record.getTemperature() + "℃，结论："
                         + (Boolean.TRUE.equals(record.getQualified()) ? "合格" : "不合格")
-                        + (record.getInspector() != null ? "，抽检人：" + record.getInspector() : ""),
+                        + (record.getInspector() != null ? "，抽检人：" + record.getInspector() : "")
+                        + (record.getThermometerNo() != null ? "，体温枪编号：" + record.getThermometerNo() : ""),
                 "spotcheck"));
 
         if (record.getReviewer() != null && !record.getReviewer().trim().isEmpty()) {
@@ -245,6 +258,7 @@ public class SpotCheckService {
         dto.setCheckDate(record.getCheckDate());
         dto.setTemperature(record.getTemperature());
         dto.setQualified(record.getQualified());
+        dto.setThermometerNo(record.getThermometerNo());
         dto.setAbnormalDesc(record.getAbnormalDesc());
         dto.setPhotoUrl(record.getPhotoUrl());
         dto.setInspector(record.getInspector());

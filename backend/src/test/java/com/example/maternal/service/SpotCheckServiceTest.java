@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -75,6 +76,7 @@ class SpotCheckServiceTest {
         request.setEquipmentId(EQUIPMENT_ID);
         request.setCheckDate(LocalDate.of(2026, 9, 12));
         request.setTemperature(temperature);
+        request.setThermometerNo("GUN-01");
         request.setInspector("赵值班");
         return request;
     }
@@ -228,14 +230,105 @@ class SpotCheckServiceTest {
     }
 
     @Test
+    @DisplayName("体温枪编号为空或纯空白时当场拦截，不保存记录")
+    void createSpotCheck_blankThermometerNo_rejected() {
+        SpotCheckRecordRequest nullNo = baseRequest(new BigDecimal("45.0"));
+        nullNo.setThermometerNo(null);
+        assertThatThrownBy(() -> spotCheckService.createSpotCheck(nullNo))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("体温枪编号不能为空");
+
+        SpotCheckRecordRequest blankNo = baseRequest(new BigDecimal("45.0"));
+        blankNo.setThermometerNo("   ");
+        assertThatThrownBy(() -> spotCheckService.createSpotCheck(blankNo))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("体温枪编号不能为空");
+
+        verify(spotCheckRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("体温枪编号超过50字时给出明确提示，不保存记录")
+    void createSpotCheck_thermometerNoTooLong_rejected() {
+        SpotCheckRecordRequest request = baseRequest(new BigDecimal("45.0"));
+        request.setThermometerNo("G".repeat(51));
+        assertThatThrownBy(() -> spotCheckService.createSpotCheck(request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("体温枪编号不能超过50字");
+        verify(spotCheckRecordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("每条记录按本次提交值落库体温枪编号，不会把上一台编号写进本行")
+    void createSpotCheck_eachRecordKeepsOwnThermometerNo() {
+        when(spotCheckRecordRepository.save(any(SpotCheckRecord.class))).thenAnswer(invocation -> {
+            SpotCheckRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        SpotCheckRecordRequest first = baseRequest(new BigDecimal("45.0"));
+        first.setThermometerNo(" GUN-01 ");
+        spotCheckService.createSpotCheck(first);
+
+        SpotCheckRecordRequest second = baseRequest(new BigDecimal("46.0"));
+        second.setCheckDate(LocalDate.of(2026, 9, 13));
+        second.setThermometerNo("GUN-02");
+        spotCheckService.createSpotCheck(second);
+
+        ArgumentCaptor<SpotCheckRecord> captor = ArgumentCaptor.forClass(SpotCheckRecord.class);
+        verify(spotCheckRecordRepository, org.mockito.Mockito.times(2)).save(captor.capture());
+        List<SpotCheckRecord> saved = captor.getAllValues();
+        assertThat(saved.get(0).getThermometerNo()).isEqualTo("GUN-01");
+        assertThat(saved.get(1).getThermometerNo()).isEqualTo("GUN-02");
+    }
+
+    @Test
+    @DisplayName("上一台已带编号时，本台留空仍被拦截，不会用上一台编号补齐")
+    void createSpotCheck_emptyThermometerNo_notBackfilledFromPrevious() {
+        when(spotCheckRecordRepository.save(any(SpotCheckRecord.class))).thenAnswer(invocation -> {
+            SpotCheckRecord record = invocation.getArgument(0);
+            record.setId(1L);
+            return record;
+        });
+
+        SpotCheckRecordRequest first = baseRequest(new BigDecimal("45.0"));
+        first.setThermometerNo("GUN-01");
+        spotCheckService.createSpotCheck(first);
+
+        SpotCheckRecordRequest second = baseRequest(new BigDecimal("46.0"));
+        second.setCheckDate(LocalDate.of(2026, 9, 13));
+        second.setThermometerNo("");
+        assertThatThrownBy(() -> spotCheckService.createSpotCheck(second))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("体温枪编号不能为空");
+
+        verify(spotCheckRecordRepository, org.mockito.Mockito.times(1)).save(any(SpotCheckRecord.class));
+    }
+
+    @Test
+    @DisplayName("体温枪编号筛选透传到查询：按编号精确过滤")
+    void getSpotChecks_thermometerNoPassedThrough() {
+        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.eq("GUN-01")))
+                .thenReturn(java.util.List.of());
+
+        var result = spotCheckService.getSpotChecks(null, null, null, null, null, null, " GUN-01 ");
+
+        assertThat(result).isEmpty();
+        verify(spotCheckRecordRepository).findByFilter(any(), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.eq("GUN-01"));
+    }
+
+    @Test
     @DisplayName("按母婴室区域过滤：选择父区域时包含下级区域，返回结果再按范围收敛")
     void getSpotChecks_areaFilter_appliesScope() {
         when(areaService.resolveScopeAreaIds(AREA_A_ID))
                 .thenReturn(java.util.Set.of(AREA_A_ID, 4L, 5L));
-        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), any()))
+        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(java.util.List.of());
 
-        var result = spotCheckService.getSpotChecks(null, null, AREA_A_ID, null, null, null);
+        var result = spotCheckService.getSpotChecks(null, null, AREA_A_ID, null, null, null, null);
 
         assertThat(result).isEmpty();
         verify(areaService).resolveScopeAreaIds(AREA_A_ID);
@@ -244,7 +337,7 @@ class SpotCheckServiceTest {
     @Test
     @DisplayName("复核人筛选条件只接受0或1，非法值给出明确提示")
     void getSpotChecks_invalidReviewStatus_rejected() {
-        assertThatThrownBy(() -> spotCheckService.getSpotChecks(null, null, null, null, null, 2))
+        assertThatThrownBy(() -> spotCheckService.getSpotChecks(null, null, null, null, null, 2, null))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("复核人筛选条件不合法");
     }
@@ -252,12 +345,12 @@ class SpotCheckServiceTest {
     @Test
     @DisplayName("复核人筛选条件透传到查询：已补复核人按1过滤")
     void getSpotChecks_reviewStatusPassedThrough() {
-        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(1)))
+        when(spotCheckRecordRepository.findByFilter(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(1), any()))
                 .thenReturn(java.util.List.of());
 
-        var result = spotCheckService.getSpotChecks(null, null, null, null, null, 1);
+        var result = spotCheckService.getSpotChecks(null, null, null, null, null, 1, null);
 
         assertThat(result).isEmpty();
-        verify(spotCheckRecordRepository).findByFilter(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(1));
+        verify(spotCheckRecordRepository).findByFilter(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq(1), any());
     }
 }
