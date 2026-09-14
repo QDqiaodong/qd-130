@@ -6,6 +6,7 @@ USE maternal_db;
 
 DROP TABLE IF EXISTS repair_order;
 DROP TABLE IF EXISTS spot_check_record;
+DROP TABLE IF EXISTS patrol_checkin;
 DROP TABLE IF EXISTS disinfection_record;
 DROP TABLE IF EXISTS supply_handover;
 DROP TABLE IF EXISTS room_opening_record;
@@ -165,6 +166,24 @@ CREATE TABLE disinfection_record (
     INDEX idx_closed_loop (closed_loop)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室消毒登记表';
 
+CREATE TABLE patrol_checkin (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '打卡记录ID',
+    checkin_no VARCHAR(50) UNIQUE NOT NULL COMMENT '打卡单号',
+    area_id BIGINT NOT NULL COMMENT '母婴室区域ID',
+    patrol_date DATE NOT NULL COMMENT '巡更日期（夜间班次归属的日期）',
+    shift INT NOT NULL COMMENT '巡更班次：1-前夜班（22:00-02:00），2-后夜班（02:00-06:00）',
+    patrol_person VARCHAR(50) NOT NULL COMMENT '巡更人（值班人员）',
+    checkin_time DATETIME NOT NULL COMMENT '打卡时间',
+    remark VARCHAR(500) COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_patrol_area_date_shift (area_id, patrol_date, shift),
+    INDEX idx_checkin_no (checkin_no),
+    INDEX idx_area_id (area_id),
+    INDEX idx_patrol_date (patrol_date),
+    INDEX idx_shift (shift)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='母婴室夜间巡更打卡表';
+
 CREATE TABLE supply_handover (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '交接单ID',
     handover_no VARCHAR(50) UNIQUE NOT NULL COMMENT '交接单号',
@@ -288,6 +307,12 @@ INSERT INTO supply_handover (handover_no, area_id, handover_date, handover_perso
 ('SH202609130002', 5, '2026-09-13', '赵值班', '钱值班', 8, 22, 1, '2026-09-13 08:10:00', '湿巾余量偏少，已通知补货'),
 ('SH202609130003', 6, '2026-09-13', '钱值班', '孙值班', 15, 40, 0, NULL, NULL),
 ('SH202609120001', 7, '2026-09-12', '孙值班', '赵值班', 10, 25, 1, '2026-09-12 21:05:00', '晚班交接');
+
+INSERT INTO patrol_checkin (checkin_no, area_id, patrol_date, shift, patrol_person, checkin_time, remark) VALUES
+('PC202609130001', 4, '2026-09-13', 1, '赵值班', '2026-09-13 22:10:00', '前夜班巡更，门窗正常'),
+('PC202609130002', 5, '2026-09-13', 1, '赵值班', '2026-09-13 22:25:00', NULL),
+('PC202609130003', 4, '2026-09-13', 2, '钱值班', '2026-09-14 02:15:00', '后夜班巡更，室内无异常'),
+('PC202609120001', 6, '2026-09-12', 1, '孙值班', '2026-09-12 22:05:00', '历史打卡仅供回看');
 
 INSERT INTO room_opening_record (record_no, area_id, open_date, open_time, close_time, temporarily_closed, close_reason, remark) VALUES
 ('OP202609130001', 4, '2026-09-13', '2026-09-13 08:00:00', '2026-09-13 22:00:00', 0, NULL, '正常开放'),

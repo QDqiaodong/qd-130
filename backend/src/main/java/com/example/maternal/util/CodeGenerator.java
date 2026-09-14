@@ -75,4 +75,10 @@ public class CodeGenerator {
         int sequence = COUNTER.incrementAndGet() % 10000;
         return String.format("SH%s%04d", timestamp, sequence);
     }
+
+    public static String generatePatrolCheckinNo() {
+        String timestamp = LocalDateTime.now().format(FORMATTER);
+        int sequence = COUNTER.incrementAndGet() % 10000;
+        return String.format("PC%s%04d", timestamp, sequence);
+    }
 }

@@ -94,4 +94,9 @@ export const supplyHandoverApi = {
   confirmHandover: (id) => api.put(`/supply-handovers/${id}/confirm`)
 }
 
+export const patrolApi = {
+  getBoard: (params) => api.get('/patrol-checkins', { params }),
+  createCheckin: (data) => api.post('/patrol-checkins', data)
+}
+
 export default api

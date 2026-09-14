@@ -12,6 +12,7 @@ import InspectionList from './components/InspectionList.vue'
 import SpotCheckList from './components/SpotCheckList.vue'
 import DisinfectionList from './components/DisinfectionList.vue'
 import SupplyHandoverList from './components/SupplyHandoverList.vue'
+import PatrolCheckinList from './components/PatrolCheckinList.vue'
 import RepairList from './components/RepairList.vue'
 import HealthDashboard from './components/HealthDashboard.vue'
 import { equipmentApi } from './api'
@@ -137,6 +138,7 @@ onMounted(() => {
         <button :class="['nav-btn', { active: activeTab === 'spotcheck' }]" @click="switchTab('spotcheck')">温奶器抽检</button>
         <button :class="['nav-btn', { active: activeTab === 'disinfection' }]" @click="switchTab('disinfection')">消毒登记</button>
         <button :class="['nav-btn', { active: activeTab === 'handover' }]" @click="switchTab('handover')">值班交接</button>
+        <button :class="['nav-btn', { active: activeTab === 'patrol' }]" @click="switchTab('patrol')">夜间巡更</button>
         <button :class="['nav-btn', { active: activeTab === 'repair' }]" @click="switchTab('repair')">故障报修</button>
       </div>
     </header>
@@ -196,6 +198,10 @@ onMounted(() => {
 
       <div v-else-if="activeTab === 'handover'" class="sub-page">
         <SupplyHandoverList />
+      </div>
+
+      <div v-else-if="activeTab === 'patrol'" class="sub-page">
+        <PatrolCheckinList />
       </div>
 
       <div v-else class="sub-page">
